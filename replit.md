@@ -45,6 +45,7 @@ The application manages several core trading entities:
 - **Trades**: Individual trade executions with P&L tracking
 - **Backtest Results**: Historical strategy performance analysis
 - **Portfolio Metrics**: Aggregate performance and risk metrics
+- **Chat Messages**: AI assistant conversations with contextual trading data
 
 ### Development Workflow
 - **Monorepo Structure**: Shared types and utilities between frontend and backend

@@ -9,6 +9,7 @@ import Strategies from "@/pages/Strategies";
 import Backtesting from "@/pages/Backtesting";
 import Portfolio from "@/pages/Portfolio";
 import Markets from "@/pages/Markets";
+import Chat from "@/pages/Chat";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
 
@@ -20,6 +21,7 @@ function Router() {
       <Route path="/backtesting" component={Backtesting} />
       <Route path="/portfolio" component={Portfolio} />
       <Route path="/markets" component={Markets} />
+      <Route path="/chat" component={Chat} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
