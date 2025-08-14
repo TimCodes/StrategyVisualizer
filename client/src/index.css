@@ -1,0 +1,113 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(240, 10%, 3.9%);
+  --foreground: hsl(0, 0%, 98%);
+  --card: hsl(240, 10%, 9%);
+  --card-foreground: hsl(0, 0%, 98%);
+  --popover: hsl(240, 10%, 9%);
+  --popover-foreground: hsl(0, 0%, 98%);
+  --primary: hsl(203, 89%, 53%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(240, 4%, 16%);
+  --secondary-foreground: hsl(0, 0%, 98%);
+  --muted: hsl(240, 4%, 16%);
+  --muted-foreground: hsl(240, 5%, 64%);
+  --accent: hsl(240, 4%, 16%);
+  --accent-foreground: hsl(0, 0%, 98%);
+  --destructive: hsl(0, 84%, 60%);
+  --destructive-foreground: hsl(0, 0%, 98%);
+  --border: hsl(240, 6%, 18%);
+  --input: hsl(240, 6%, 18%);
+  --ring: hsl(203, 89%, 53%);
+  --chart-1: hsl(203, 89%, 53%);
+  --chart-2: hsl(160, 100%, 36%);
+  --chart-3: hsl(42, 93%, 56%);
+  --chart-4: hsl(147, 79%, 42%);
+  --chart-5: hsl(341, 75%, 51%);
+  --success: hsl(160, 84%, 39%);
+  --warning: hsl(42, 96%, 50%);
+  --danger: hsl(0, 84%, 60%);
+  --surface: hsl(240, 10%, 9%);
+  --text-primary: hsl(0, 0%, 98%);
+  --text-secondary: hsl(240, 5%, 64%);
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: hsl(240, 10%, 3.9%);
+  --foreground: hsl(0, 0%, 98%);
+  --card: hsl(240, 10%, 9%);
+  --card-foreground: hsl(0, 0%, 98%);
+  --popover: hsl(240, 10%, 9%);
+  --popover-foreground: hsl(0, 0%, 98%);
+  --primary: hsl(203, 89%, 53%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(240, 4%, 16%);
+  --secondary-foreground: hsl(0, 0%, 98%);
+  --muted: hsl(240, 4%, 16%);
+  --muted-foreground: hsl(240, 5%, 64%);
+  --accent: hsl(240, 4%, 16%);
+  --accent-foreground: hsl(0, 0%, 98%);
+  --destructive: hsl(0, 84%, 60%);
+  --destructive-foreground: hsl(0, 0%, 98%);
+  --border: hsl(240, 6%, 18%);
+  --input: hsl(240, 6%, 18%);
+  --ring: hsl(203, 89%, 53%);
+  --chart-1: hsl(203, 89%, 53%);
+  --chart-2: hsl(160, 100%, 36%);
+  --chart-3: hsl(42, 93%, 56%);
+  --chart-4: hsl(147, 79%, 42%);
+  --chart-5: hsl(341, 75%, 51%);
+  --success: hsl(160, 84%, 39%);
+  --warning: hsl(42, 96%, 50%);
+  --danger: hsl(0, 84%, 60%);
+  --surface: hsl(240, 10%, 9%);
+  --text-primary: hsl(0, 0%, 98%);
+  --text-secondary: hsl(240, 5%, 64%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: var(--font-sans);
+  }
+  
+  html {
+    @apply dark;
+  }
+}
+
+@layer components {
+  .metric-card {
+    transition: all 0.2s ease-in-out;
+  }
+  
+  .metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  }
+  
+  .sidebar-item {
+    transition: all 0.2s ease-in-out;
+  }
+  
+  .sidebar-item:hover {
+    background-color: rgba(14, 165, 233, 0.1);
+    border-left: 3px solid hsl(var(--primary));
+  }
+  
+  .sidebar-item.active {
+    background-color: rgba(14, 165, 233, 0.2);
+    border-left: 3px solid hsl(var(--primary));
+  }
+}
