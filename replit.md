@@ -6,7 +6,7 @@ This is a comprehensive trading dashboard application built for algorithmic trad
 
 ## User Preferences
 
-Preferred communication style: Simple, everyday language.
+Preferred communication style: Simple, everyday language. Direct and focused responses without promotional language or selling.
 
 ## System Architecture
 
