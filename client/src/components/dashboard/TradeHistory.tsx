@@ -3,12 +3,12 @@ import { ArrowUp, ArrowDown } from "lucide-react";
 import { Trade } from "@shared/schema";
 
 interface TradeHistoryProps {
-  trades: Trade[];
+  trades?: Trade[];
   isLoading?: boolean;
 }
 
 export default function TradeHistory({ trades, isLoading }: TradeHistoryProps) {
-  if (isLoading) {
+  if (isLoading || !trades) {
     return (
       <Card className="bg-surface border-border">
         <CardHeader className="border-b border-border">

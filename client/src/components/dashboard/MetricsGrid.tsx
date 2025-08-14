@@ -3,11 +3,34 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PortfolioMetrics } from "@shared/schema";
 
 interface MetricsGridProps {
-  metrics: PortfolioMetrics;
+  metrics?: PortfolioMetrics;
   isLoading?: boolean;
 }
 
 export default function MetricsGrid({ metrics, isLoading }: MetricsGridProps) {
+  if (isLoading || !metrics) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i} className="bg-surface border-border">
+            <CardContent className="p-6">
+              <div className="animate-pulse">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="h-4 bg-border rounded w-24 mb-2"></div>
+                    <div className="h-8 bg-border rounded w-20 mb-1"></div>
+                    <div className="h-3 bg-border rounded w-32"></div>
+                  </div>
+                  <div className="w-12 h-12 bg-border rounded-full"></div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
   const metricsData = [
     {
       title: "Total Return",
@@ -46,29 +69,6 @@ export default function MetricsGrid({ metrics, isLoading }: MetricsGridProps) {
       valueColor: "text-text-primary",
     },
   ];
-
-  if (isLoading) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i} className="bg-surface border-border">
-            <CardContent className="p-6">
-              <div className="animate-pulse">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="h-4 bg-border rounded w-24 mb-2"></div>
-                    <div className="h-8 bg-border rounded w-20 mb-1"></div>
-                    <div className="h-3 bg-border rounded w-32"></div>
-                  </div>
-                  <div className="w-12 h-12 bg-border rounded-full"></div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

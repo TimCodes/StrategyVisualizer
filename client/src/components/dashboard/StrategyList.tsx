@@ -4,12 +4,12 @@ import { Plus } from "lucide-react";
 import { Strategy } from "@shared/schema";
 
 interface StrategyListProps {
-  strategies: Strategy[];
+  strategies?: Strategy[];
   isLoading?: boolean;
 }
 
 export default function StrategyList({ strategies, isLoading }: StrategyListProps) {
-  if (isLoading) {
+  if (isLoading || !strategies) {
     return (
       <Card className="bg-surface border-border">
         <CardHeader className="border-b border-border">

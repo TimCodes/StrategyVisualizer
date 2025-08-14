@@ -39,7 +39,7 @@ export default function Markets() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {marketData?.map((market, index) => (
+                {(marketData || []).map((market, index) => (
                   <div 
                     key={market.id} 
                     className="p-4 bg-background rounded-lg"
@@ -75,15 +75,13 @@ export default function Markets() {
 
         {/* Price Chart */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {priceData && (
-            <MarketChart
-              data={priceData}
-              symbol="BTC/USD"
-              price={43281.50}
-              changePercent={2.45}
-              isLoading={priceLoading}
-            />
-          )}
+          <MarketChart
+            data={priceData || []}
+            symbol="BTC/USD"
+            price={43281.50}
+            changePercent={2.45}
+            isLoading={priceLoading}
+          />
           
           {/* Additional market charts would go here */}
           <Card className="bg-surface border-border">

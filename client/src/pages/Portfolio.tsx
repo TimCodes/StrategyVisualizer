@@ -29,21 +29,15 @@ export default function Portfolio() {
       />
 
       <main className="flex-1 p-6 space-y-6 overflow-y-auto">
-        {metrics && (
-          <MetricsGrid metrics={metrics} isLoading={metricsLoading} />
-        )}
+        <MetricsGrid metrics={metrics} isLoading={metricsLoading} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {performanceData && (
-            <PerformanceChart
-              data={performanceData}
-              isLoading={performanceLoading}
-            />
-          )}
+          <PerformanceChart
+            data={performanceData || []}
+            isLoading={performanceLoading}
+          />
 
-          {trades && (
-            <TradeHistory trades={trades} isLoading={tradesLoading} />
-          )}
+          <TradeHistory trades={trades || []} isLoading={tradesLoading} />
         </div>
       </main>
     </div>

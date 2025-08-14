@@ -60,7 +60,7 @@ export default function Strategies() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {strategies?.map((strategy, index) => (
+          {(strategies || []).map((strategy, index) => (
             <Card key={strategy.id} className="bg-surface border-border" data-testid={`strategy-card-${index}`}>
               <CardHeader>
                 <div className="flex justify-between items-start">

@@ -4,12 +4,12 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { PerformanceData } from "@shared/schema";
 
 interface PerformanceChartProps {
-  data: PerformanceData[];
+  data?: PerformanceData[];
   isLoading?: boolean;
 }
 
 export default function PerformanceChart({ data, isLoading }: PerformanceChartProps) {
-  if (isLoading) {
+  if (isLoading || !data) {
     return (
       <Card className="lg:col-span-2 bg-surface border-border">
         <CardHeader className="border-b border-border">

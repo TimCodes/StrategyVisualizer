@@ -76,46 +76,34 @@ export default function Overview() {
       />
 
       <main className="flex-1 p-6 space-y-6 overflow-y-auto">
-        {metrics && (
-          <MetricsGrid metrics={metrics} isLoading={metricsLoading} />
-        )}
+        <MetricsGrid metrics={metrics} isLoading={metricsLoading} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {performanceData && (
-            <PerformanceChart
-              data={performanceData}
-              isLoading={performanceLoading}
-            />
-          )}
+          <PerformanceChart
+            data={performanceData || []}
+            isLoading={performanceLoading}
+          />
 
-          {strategies && (
-            <StrategyList strategies={strategies} isLoading={strategiesLoading} />
-          )}
+          <StrategyList strategies={strategies || []} isLoading={strategiesLoading} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {priceData && (
-            <MarketChart
-              data={priceData}
-              symbol="BTC/USD"
-              price={43281.50}
-              changePercent={2.45}
-              isLoading={priceLoading}
-            />
-          )}
+          <MarketChart
+            data={priceData || []}
+            symbol="BTC/USD"
+            price={43281.50}
+            changePercent={2.45}
+            isLoading={priceLoading}
+          />
 
-          {trades && (
-            <TradeHistory trades={trades} isLoading={tradesLoading} />
-          )}
+          <TradeHistory trades={trades || []} isLoading={tradesLoading} />
         </div>
 
-        {backtestResults && (
-          <BacktestingTable
-            results={backtestResults}
-            isLoading={backtestLoading}
-            onRunBacktest={handleRunBacktest}
-          />
-        )}
+        <BacktestingTable
+          results={backtestResults || []}
+          isLoading={backtestLoading}
+          onRunBacktest={handleRunBacktest}
+        />
       </main>
     </div>
   );

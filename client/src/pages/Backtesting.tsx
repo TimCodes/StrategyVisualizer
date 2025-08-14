@@ -36,13 +36,11 @@ export default function Backtesting() {
       />
 
       <main className="flex-1 p-6 space-y-6 overflow-y-auto">
-        {backtestResults && (
-          <BacktestingTable
-            results={backtestResults}
-            isLoading={isLoading}
-            onRunBacktest={handleRunBacktest}
-          />
-        )}
+        <BacktestingTable
+          results={backtestResults || []}
+          isLoading={isLoading}
+          onRunBacktest={handleRunBacktest}
+        />
       </main>
     </div>
   );

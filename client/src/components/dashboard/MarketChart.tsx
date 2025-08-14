@@ -3,7 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { PriceData } from "@shared/schema";
 
 interface MarketChartProps {
-  data: PriceData[];
+  data?: PriceData[];
   symbol: string;
   price: number;
   changePercent: number;
@@ -17,7 +17,7 @@ export default function MarketChart({
   changePercent, 
   isLoading 
 }: MarketChartProps) {
-  if (isLoading) {
+  if (isLoading || !data) {
     return (
       <Card className="bg-surface border-border">
         <CardHeader className="border-b border-border">

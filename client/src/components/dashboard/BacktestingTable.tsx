@@ -5,13 +5,13 @@ import { Play } from "lucide-react";
 import { BacktestResult } from "@shared/schema";
 
 interface BacktestingTableProps {
-  results: BacktestResult[];
+  results?: BacktestResult[];
   isLoading?: boolean;
   onRunBacktest?: () => void;
 }
 
 export default function BacktestingTable({ results, isLoading, onRunBacktest }: BacktestingTableProps) {
-  if (isLoading) {
+  if (isLoading || !results) {
     return (
       <Card className="bg-surface border-border">
         <CardHeader className="border-b border-border">

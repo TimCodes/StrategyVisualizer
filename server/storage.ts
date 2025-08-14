@@ -1,37 +1,41 @@
-import { type User, type InsertUser } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { Strategy, MarketData, Trade, BacktestResult } from "@shared/schema";
 
-// modify the interface with any CRUD methods
-// you might need
-
+// Trading data storage interface
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  getStrategies(): Promise<Strategy[]>;
+  getMarketData(): Promise<MarketData[]>;
+  getTrades(): Promise<Trade[]>;
+  getBacktestResults(): Promise<BacktestResult[]>;
 }
 
 export class MemStorage implements IStorage {
-  private users: Map<string, User>;
+  private strategies: Map<string, Strategy>;
+  private marketData: Map<string, MarketData>;
+  private trades: Map<string, Trade>;
+  private backtestResults: Map<string, BacktestResult>;
 
   constructor() {
-    this.users = new Map();
+    this.strategies = new Map();
+    this.marketData = new Map();
+    this.trades = new Map();
+    this.backtestResults = new Map();
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async getStrategies(): Promise<Strategy[]> {
+    return Array.from(this.strategies.values());
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async getMarketData(): Promise<MarketData[]> {
+    return Array.from(this.marketData.values());
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async getTrades(): Promise<Trade[]> {
+    return Array.from(this.trades.values());
+  }
+
+  async getBacktestResults(): Promise<BacktestResult[]> {
+    return Array.from(this.backtestResults.values());
   }
 }
 
