@@ -78,6 +78,25 @@ export const performanceDataSchema = z.object({
   drawdown: z.number(),
 });
 
+export const dateRangeSchema = z.object({
+  start: z.date(),
+  end: z.date(),
+});
+
+export const insertStrategySchema = strategySchema.omit({ 
+  id: true, 
+  createdAt: true 
+});
+
+export const insertTradeSchema = tradeSchema.omit({ 
+  id: true 
+});
+
+export const insertBacktestSchema = backtestResultSchema.omit({ 
+  id: true, 
+  createdAt: true 
+});
+
 export type Strategy = z.infer<typeof strategySchema>;
 export type MarketData = z.infer<typeof marketDataSchema>;
 export type PriceData = z.infer<typeof priceDataSchema>;
@@ -85,3 +104,8 @@ export type Trade = z.infer<typeof tradeSchema>;
 export type BacktestResult = z.infer<typeof backtestResultSchema>;
 export type PortfolioMetrics = z.infer<typeof portfolioMetricsSchema>;
 export type PerformanceData = z.infer<typeof performanceDataSchema>;
+export type DateRange = z.infer<typeof dateRangeSchema>;
+
+export type InsertStrategy = z.infer<typeof insertStrategySchema>;
+export type InsertTrade = z.infer<typeof insertTradeSchema>;
+export type InsertBacktest = z.infer<typeof insertBacktestSchema>;

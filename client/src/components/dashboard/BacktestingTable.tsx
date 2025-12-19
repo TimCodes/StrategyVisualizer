@@ -106,7 +106,7 @@ export default function BacktestingTable({ results, isLoading, onRunBacktest }: 
                     <div className="text-text-secondary text-sm">{result.strategyDescription}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">
-                    {result.startDate.toLocaleDateString()} to {result.endDate.toLocaleDateString()}
+                    {new Date(result.startDate).toLocaleDateString()} to {new Date(result.endDate).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`font-medium ${
