@@ -34,13 +34,10 @@ export default function MarketChart({
     );
   }
 
-  const chartData = data.map(d => {
-    const dateObj = typeof d.timestamp === 'string' ? new Date(d.timestamp) : d.timestamp;
-    return {
-      time: dateObj.toLocaleDateString(),
-      price: d.close,
-    };
-  });
+  const chartData = data.map(d => ({
+    time: d.timestamp.toLocaleDateString(),
+    price: d.close,
+  }));
 
   return (
     <Card className="bg-surface border-border">

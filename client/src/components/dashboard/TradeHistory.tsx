@@ -41,10 +41,9 @@ export default function TradeHistory({ trades, isLoading }: TradeHistoryProps) {
     );
   }
 
-  const formatTimeAgo = (date: Date | string) => {
+  const formatTimeAgo = (date: Date) => {
     const now = new Date();
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
-    const diffInMinutes = Math.floor((now.getTime() - dateObj.getTime()) / (1000 * 60));
+    const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
     
     if (diffInMinutes < 60) {
       return `${diffInMinutes} minutes ago`;

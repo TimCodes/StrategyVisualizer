@@ -11,17 +11,63 @@ import {
   InsertBacktest,
 } from "@shared/schema";
 
+function hydrateStrategy(data: any): Strategy {
+  return {
+    ...data,
+    createdAt: new Date(data.createdAt),
+  };
+}
+
+function hydrateTrade(data: any): Trade {
+  return {
+    ...data,
+    timestamp: new Date(data.timestamp),
+  };
+}
+
+function hydrateBacktest(data: any): BacktestResult {
+  return {
+    ...data,
+    startDate: new Date(data.startDate),
+    endDate: new Date(data.endDate),
+    createdAt: new Date(data.createdAt),
+  };
+}
+
+function hydrateMarketData(data: any): MarketData {
+  return {
+    ...data,
+    timestamp: new Date(data.timestamp),
+  };
+}
+
+function hydratePriceData(data: any): PriceData {
+  return {
+    ...data,
+    timestamp: new Date(data.timestamp),
+  };
+}
+
+function hydratePerformanceData(data: any): PerformanceData {
+  return {
+    ...data,
+    date: new Date(data.date),
+  };
+}
+
 export class TradingService {
   static async getStrategies(): Promise<Strategy[]> {
     const res = await fetch('/api/strategies');
     if (!res.ok) throw new Error('Failed to fetch strategies');
-    return res.json();
+    const data = await res.json();
+    return data.map(hydrateStrategy);
   }
 
   static async getStrategyById(id: string): Promise<Strategy> {
     const res = await fetch(`/api/strategies/${id}`);
     if (!res.ok) throw new Error('Failed to fetch strategy');
-    return res.json();
+    const data = await res.json();
+    return hydrateStrategy(data);
   }
 
   static async createStrategy(data: InsertStrategy): Promise<Strategy> {
@@ -31,7 +77,8 @@ export class TradingService {
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Failed to create strategy');
-    return res.json();
+    const result = await res.json();
+    return hydrateStrategy(result);
   }
 
   static async updateStrategy(id: string, data: Partial<InsertStrategy>): Promise<Strategy> {
@@ -41,7 +88,8 @@ export class TradingService {
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Failed to update strategy');
-    return res.json();
+    const result = await res.json();
+    return hydrateStrategy(result);
   }
 
   static async deleteStrategy(id: string): Promise<void> {
@@ -54,7 +102,8 @@ export class TradingService {
   static async getMarketData(): Promise<MarketData[]> {
     const res = await fetch('/api/markets');
     if (!res.ok) throw new Error('Failed to fetch market data');
-    return res.json();
+    const data = await res.json();
+    return data.map(hydrateMarketData);
   }
 
   static async getPriceData(symbol: string, timeframe: string = "1d"): Promise<PriceData[]> {
@@ -74,13 +123,15 @@ export class TradingService {
         };
       });
     }
-    return res.json();
+    const data = await res.json();
+    return data.map(hydratePriceData);
   }
 
   static async getTrades(): Promise<Trade[]> {
     const res = await fetch('/api/trades');
     if (!res.ok) throw new Error('Failed to fetch trades');
-    return res.json();
+    const data = await res.json();
+    return data.map(hydrateTrade);
   }
 
   static async createTrade(data: InsertTrade): Promise<Trade> {
@@ -90,13 +141,15 @@ export class TradingService {
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Failed to create trade');
-    return res.json();
+    const result = await res.json();
+    return hydrateTrade(result);
   }
 
   static async getBacktestResults(): Promise<BacktestResult[]> {
     const res = await fetch('/api/backtests');
     if (!res.ok) throw new Error('Failed to fetch backtests');
-    return res.json();
+    const data = await res.json();
+    return data.map(hydrateBacktest);
   }
 
   static async createBacktest(data: InsertBacktest): Promise<BacktestResult> {
@@ -106,7 +159,8 @@ export class TradingService {
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Failed to create backtest');
-    return res.json();
+    const result = await res.json();
+    return hydrateBacktest(result);
   }
 
   static async updateBacktest(id: string, data: Partial<InsertBacktest>): Promise<BacktestResult> {
@@ -116,7 +170,8 @@ export class TradingService {
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Failed to update backtest');
-    return res.json();
+    const result = await res.json();
+    return hydrateBacktest(result);
   }
 
   static async getPortfolioMetrics(): Promise<PortfolioMetrics> {
@@ -125,14 +180,19 @@ export class TradingService {
     return res.json();
   }
 
-  static async getPerformanceData(startDate?: Date, endDate?: Date): Promise<PerformanceData[]> {
-    let url = '/api/portfolio/performance';
-    if (startDate && endDate) {
-      url += `?start=${startDate.toISOString()}&end=${endDate.toISOString()}`;
-    }
+  static async getPerformanceData(): Promise<PerformanceData[]> {
+    const res = await fetch('/api/portfolio/performance');
+    if (!res.ok) throw new Error('Failed to fetch performance data');
+    const data = await res.json();
+    return data.map(hydratePerformanceData);
+  }
+
+  static async getPerformanceDataWithRange(startDate: Date, endDate: Date): Promise<PerformanceData[]> {
+    const url = `/api/portfolio/performance?start=${startDate.toISOString()}&end=${endDate.toISOString()}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch performance data');
-    return res.json();
+    const data = await res.json();
+    return data.map(hydratePerformanceData);
   }
 
   static async runBacktest(strategyId: string, params: {

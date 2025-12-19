@@ -53,7 +53,13 @@ export default function Overview() {
 
   const handleRunBacktest = async () => {
     try {
-      await TradingService.runBacktest("1", {});
+      const now = new Date();
+      const oneYearAgo = new Date(now);
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      await TradingService.runBacktest("1", {
+        startDate: oneYearAgo,
+        endDate: now,
+      });
       toast({
         title: "Backtest Started",
         description: "Your backtest has been queued and will run shortly.",

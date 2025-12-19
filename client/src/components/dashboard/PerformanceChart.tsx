@@ -26,14 +26,11 @@ export default function PerformanceChart({ data, isLoading }: PerformanceChartPr
     );
   }
 
-  const chartData = data.map(d => {
-    const dateObj = typeof d.date === 'string' ? new Date(d.date) : d.date;
-    return {
-      date: dateObj.toLocaleDateString('en-US', { month: 'short' }),
-      portfolio: d.portfolioValue,
-      benchmark: d.benchmarkValue,
-    };
-  });
+  const chartData = data.map(d => ({
+    date: d.date.toLocaleDateString('en-US', { month: 'short' }),
+    portfolio: d.portfolioValue,
+    benchmark: d.benchmarkValue,
+  }));
 
   return (
     <Card className="lg:col-span-2 bg-surface border-border">
