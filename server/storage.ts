@@ -284,9 +284,49 @@ export class MemStorage implements IStorage {
 
   async createTrade(data: InsertTrade): Promise<Trade> {
     const id = randomUUID();
+    
+    const existingTrades = Array.from(this.trades.values())
+      .filter((t) => t.symbol.toUpperCase() === data.symbol.toUpperCase())
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    
+    let position = 0;
+    let totalCost = 0;
+    
+    for (const t of existingTrades) {
+      if (t.type === 'buy') {
+        totalCost += t.price * t.quantity;
+        position += t.quantity;
+      } else {
+        if (position > 0) {
+          const avgCost = totalCost / position;
+          const sharesSold = Math.min(t.quantity, position);
+          totalCost -= avgCost * sharesSold;
+          position -= sharesSold;
+        }
+      }
+    }
+    
+    let pnl = 0;
+    
+    if (data.type === 'sell') {
+      if (position > 0) {
+        const avgCost = totalCost / position;
+        const sharesSold = Math.min(data.quantity, position);
+        pnl = (data.price - avgCost) * sharesSold;
+      }
+    }
+    
+    pnl = Math.round(pnl * 100) / 100;
+    
     const trade: Trade = {
       id,
-      ...data,
+      symbol: data.symbol,
+      type: data.type,
+      quantity: data.quantity,
+      price: data.price,
+      strategyId: data.strategyId,
+      timestamp: new Date(),
+      pnl,
     };
     this.trades.set(id, trade);
     return trade;
@@ -318,7 +358,63 @@ export class MemStorage implements IStorage {
   }
 
   async getPortfolioMetrics(): Promise<PortfolioMetrics> {
-    return this.portfolioMetrics;
+    const trades = Array.from(this.trades.values());
+    
+    if (trades.length === 0) {
+      return {
+        totalValue: 100000,
+        totalReturn: 0,
+        totalReturnPercent: 0,
+        sharpeRatio: 0,
+        maxDrawdown: 0,
+        winRate: 0,
+        volatility: 0,
+        beta: 1,
+      };
+    }
+
+    const initialCapital = 100000;
+    const totalPnL = trades.reduce((sum, t) => sum + t.pnl, 0);
+    const totalValue = initialCapital + totalPnL;
+    const totalReturnPercent = (totalPnL / initialCapital) * 100;
+    
+    const profitableTrades = trades.filter((t) => t.pnl > 0).length;
+    const winRate = (profitableTrades / trades.length) * 100;
+
+    const returns = trades.map((t) => t.pnl / initialCapital);
+    const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
+    const volatility = Math.sqrt(variance) * 100;
+    
+    const riskFreeRate = 0.02 / 252;
+    const sharpeRatio = volatility > 0 ? (avgReturn - riskFreeRate) / (volatility / 100) * Math.sqrt(252) : 0;
+
+    let peak = initialCapital;
+    let maxDrawdown = 0;
+    let runningValue = initialCapital;
+    
+    const sortedTrades = [...trades].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    for (const trade of sortedTrades) {
+      runningValue += trade.pnl;
+      if (runningValue > peak) {
+        peak = runningValue;
+      }
+      const drawdown = ((peak - runningValue) / peak) * 100;
+      if (drawdown > maxDrawdown) {
+        maxDrawdown = drawdown;
+      }
+    }
+
+    return {
+      totalValue,
+      totalReturn: totalPnL,
+      totalReturnPercent,
+      sharpeRatio: Math.round(sharpeRatio * 100) / 100,
+      maxDrawdown: -maxDrawdown,
+      winRate: Math.round(winRate * 10) / 10,
+      volatility: Math.round(volatility * 10) / 10,
+      beta: 0.92,
+    };
   }
 
   async getPerformanceData(dateRange?: DateRange): Promise<PerformanceData[]> {
