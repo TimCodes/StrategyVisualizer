@@ -1,4 +1,27 @@
 import { z } from "zod";
+import { pgTable, text, boolean, integer, varchar } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+
+export const settingsTable = pgTable("settings", {
+  id: varchar("id", { length: 50 }).primaryKey().default("default"),
+  refreshInterval: text("refresh_interval").notNull().default("30s"),
+  darkMode: boolean("dark_mode").notNull().default(true),
+  notifications: boolean("notifications").notNull().default(false),
+  autoRefresh: boolean("auto_refresh").notNull().default(true),
+  defaultPositionSize: integer("default_position_size").notNull().default(1000),
+  riskLimit: integer("risk_limit").notNull().default(2),
+  maxPositions: integer("max_positions").notNull().default(10),
+  autoStopLoss: boolean("auto_stop_loss").notNull().default(false),
+  exchange: text("exchange"),
+  tradeAlerts: boolean("trade_alerts").notNull().default(true),
+  performanceAlerts: boolean("performance_alerts").notNull().default(false),
+  systemAlerts: boolean("system_alerts").notNull().default(true),
+  email: text("email"),
+});
+
+export const insertSettingsDbSchema = createInsertSchema(settingsTable).omit({ id: true });
+export type SettingsDb = typeof settingsTable.$inferSelect;
+export type InsertSettingsDb = z.infer<typeof insertSettingsDbSchema>;
 
 export const strategySchema = z.object({
   id: z.string(),
@@ -120,6 +143,28 @@ export type BacktestResult = z.infer<typeof backtestResultSchema>;
 export type PortfolioMetrics = z.infer<typeof portfolioMetricsSchema>;
 export type PerformanceData = z.infer<typeof performanceDataSchema>;
 export type DateRange = z.infer<typeof dateRangeSchema>;
+
+export const settingsSchema = z.object({
+  id: z.string().default("default"),
+  refreshInterval: z.enum(["5s", "10s", "30s", "1m"]).default("30s"),
+  darkMode: z.boolean().default(true),
+  notifications: z.boolean().default(false),
+  autoRefresh: z.boolean().default(true),
+  defaultPositionSize: z.number().default(1000),
+  riskLimit: z.number().default(2),
+  maxPositions: z.number().default(10),
+  autoStopLoss: z.boolean().default(false),
+  exchange: z.enum(["binance", "coinbase", "kraken", "alpaca"]).optional(),
+  tradeAlerts: z.boolean().default(true),
+  performanceAlerts: z.boolean().default(false),
+  systemAlerts: z.boolean().default(true),
+  email: z.string().email().optional().or(z.literal("")),
+});
+
+export const insertSettingsSchema = settingsSchema.omit({ id: true });
+
+export type Settings = z.infer<typeof settingsSchema>;
+export type InsertSettings = z.infer<typeof insertSettingsSchema>;
 
 export type InsertStrategy = z.infer<typeof insertStrategySchema>;
 export type InsertTrade = z.infer<typeof insertTradeSchema>;

@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { eq } from "drizzle-orm";
 import { 
   Strategy, 
   MarketData, 
@@ -11,8 +12,14 @@ import {
   InsertTrade,
   InsertBacktest,
   ChatMessage,
-  InsertChatMessage
+  InsertChatMessage,
+  Settings,
+  InsertSettings,
+  settingsTable,
+  SettingsDb,
+  InsertSettingsDb
 } from "@shared/schema";
+import { getDb } from "./db";
 
 export interface IStorage {
   getStrategies(): Promise<Strategy[]>;
@@ -37,6 +44,9 @@ export interface IStorage {
   getChatMessages(): Promise<ChatMessage[]>;
   createChatMessage(data: InsertChatMessage): Promise<ChatMessage>;
   clearChatHistory(): Promise<void>;
+
+  getSettings(): Promise<Settings>;
+  updateSettings(data: InsertSettings): Promise<Settings>;
 }
 
 export class MemStorage implements IStorage {
@@ -47,6 +57,7 @@ export class MemStorage implements IStorage {
   private performanceData: PerformanceData[];
   private portfolioMetrics: PortfolioMetrics;
   private chatMessages: ChatMessage[];
+  private memSettings: Settings;
 
   constructor() {
     this.strategies = new Map();
@@ -55,6 +66,22 @@ export class MemStorage implements IStorage {
     this.backtestResults = new Map();
     this.performanceData = [];
     this.chatMessages = [];
+    this.memSettings = {
+      id: "default",
+      refreshInterval: "30s",
+      darkMode: true,
+      notifications: false,
+      autoRefresh: true,
+      defaultPositionSize: 1000,
+      riskLimit: 2,
+      maxPositions: 10,
+      autoStopLoss: false,
+      exchange: undefined,
+      tradeAlerts: true,
+      performanceAlerts: false,
+      systemAlerts: true,
+      email: "",
+    };
     this.portfolioMetrics = {
       totalValue: 125467.89,
       totalReturn: 25467.89,
@@ -450,6 +477,104 @@ export class MemStorage implements IStorage {
 
   async clearChatHistory(): Promise<void> {
     this.chatMessages = [];
+  }
+
+  async getSettings(): Promise<Settings> {
+    const db = await getDb();
+    
+    if (!db) {
+      return this.memSettings;
+    }
+
+    try {
+      const results = await db.select().from(settingsTable).where(eq(settingsTable.id, "default"));
+      
+      if (results.length === 0) {
+        const defaultSettings: InsertSettingsDb = {
+          refreshInterval: "30s",
+          darkMode: true,
+          notifications: false,
+          autoRefresh: true,
+          defaultPositionSize: 1000,
+          riskLimit: 2,
+          maxPositions: 10,
+          autoStopLoss: false,
+          exchange: null,
+          tradeAlerts: true,
+          performanceAlerts: false,
+          systemAlerts: true,
+          email: null,
+        };
+        
+        const inserted = await db.insert(settingsTable).values({ id: "default", ...defaultSettings }).returning();
+        return this.dbSettingsToSettings(inserted[0]);
+      }
+      
+      return this.dbSettingsToSettings(results[0]);
+    } catch (error) {
+      console.error("Database error fetching settings, using in-memory fallback:", error);
+      return this.memSettings;
+    }
+  }
+
+  async updateSettings(data: InsertSettings): Promise<Settings> {
+    const db = await getDb();
+    
+    if (!db) {
+      this.memSettings = { ...this.memSettings, ...data };
+      return this.memSettings;
+    }
+
+    try {
+      const dbData: Partial<InsertSettingsDb> = {
+        refreshInterval: data.refreshInterval,
+        darkMode: data.darkMode,
+        notifications: data.notifications,
+        autoRefresh: data.autoRefresh,
+        defaultPositionSize: data.defaultPositionSize,
+        riskLimit: data.riskLimit,
+        maxPositions: data.maxPositions,
+        autoStopLoss: data.autoStopLoss,
+        exchange: data.exchange ?? null,
+        tradeAlerts: data.tradeAlerts,
+        performanceAlerts: data.performanceAlerts,
+        systemAlerts: data.systemAlerts,
+        email: data.email ?? null,
+      };
+      
+      const existing = await db.select().from(settingsTable).where(eq(settingsTable.id, "default"));
+      
+      if (existing.length === 0) {
+        const inserted = await db.insert(settingsTable).values({ id: "default", ...dbData }).returning();
+        return this.dbSettingsToSettings(inserted[0]);
+      }
+      
+      const updated = await db.update(settingsTable).set(dbData).where(eq(settingsTable.id, "default")).returning();
+      return this.dbSettingsToSettings(updated[0]);
+    } catch (error) {
+      console.error("Database error updating settings, using in-memory fallback:", error);
+      this.memSettings = { ...this.memSettings, ...data };
+      return this.memSettings;
+    }
+  }
+
+  private dbSettingsToSettings(dbSettings: SettingsDb): Settings {
+    return {
+      id: dbSettings.id,
+      refreshInterval: dbSettings.refreshInterval as "5s" | "10s" | "30s" | "1m",
+      darkMode: dbSettings.darkMode,
+      notifications: dbSettings.notifications,
+      autoRefresh: dbSettings.autoRefresh,
+      defaultPositionSize: dbSettings.defaultPositionSize,
+      riskLimit: dbSettings.riskLimit,
+      maxPositions: dbSettings.maxPositions,
+      autoStopLoss: dbSettings.autoStopLoss,
+      exchange: dbSettings.exchange as "binance" | "coinbase" | "kraken" | "alpaca" | undefined,
+      tradeAlerts: dbSettings.tradeAlerts,
+      performanceAlerts: dbSettings.performanceAlerts,
+      systemAlerts: dbSettings.systemAlerts,
+      email: dbSettings.email ?? "",
+    };
   }
 }
 
