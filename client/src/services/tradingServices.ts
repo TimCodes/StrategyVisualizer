@@ -195,29 +195,20 @@ export class TradingService {
     return data.map(hydratePerformanceData);
   }
 
-  static async runBacktest(strategyId: string, params: {
-    startDate: Date;
-    endDate: Date;
-    initialCapital?: number;
-    symbol?: string;
-  }): Promise<{ id: string; status: string; message: string }> {
-    const strategy = await this.getStrategyById(strategyId);
-    const backtest = await this.createBacktest({
-      strategyName: strategy.name,
-      strategyDescription: strategy.description,
-      startDate: params.startDate,
-      endDate: params.endDate,
-      totalReturn: 0,
-      sharpeRatio: 0,
-      maxDrawdown: 0,
-      winRate: 0,
-      totalTrades: 0,
-      status: "running",
+  static async runBacktest(params: {
+    strategyId: string;
+    startDate: string;
+    endDate: string;
+    initialCapital: number;
+    symbol: string;
+  }): Promise<BacktestResult> {
+    const res = await fetch('/api/backtests/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
     });
-    return {
-      id: backtest.id,
-      status: "running",
-      message: "Backtest started successfully",
-    };
+    if (!res.ok) throw new Error('Failed to run backtest');
+    const result = await res.json();
+    return hydrateBacktest(result);
   }
 }
