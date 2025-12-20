@@ -9,7 +9,9 @@ import {
   DateRange,
   InsertStrategy,
   InsertTrade,
-  InsertBacktest
+  InsertBacktest,
+  ChatMessage,
+  InsertChatMessage
 } from "@shared/schema";
 
 export interface IStorage {
@@ -31,6 +33,10 @@ export interface IStorage {
   getPerformanceData(dateRange?: DateRange): Promise<PerformanceData[]>;
 
   getMarketData(): Promise<MarketData[]>;
+
+  getChatMessages(): Promise<ChatMessage[]>;
+  createChatMessage(data: InsertChatMessage): Promise<ChatMessage>;
+  clearChatHistory(): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -40,6 +46,7 @@ export class MemStorage implements IStorage {
   private backtestResults: Map<string, BacktestResult>;
   private performanceData: PerformanceData[];
   private portfolioMetrics: PortfolioMetrics;
+  private chatMessages: ChatMessage[];
 
   constructor() {
     this.strategies = new Map();
@@ -47,6 +54,7 @@ export class MemStorage implements IStorage {
     this.trades = new Map();
     this.backtestResults = new Map();
     this.performanceData = [];
+    this.chatMessages = [];
     this.portfolioMetrics = {
       totalValue: 125467.89,
       totalReturn: 25467.89,
@@ -424,6 +432,24 @@ export class MemStorage implements IStorage {
     return this.performanceData.filter(
       (p) => p.date >= dateRange.start && p.date <= dateRange.end
     );
+  }
+
+  async getChatMessages(): Promise<ChatMessage[]> {
+    return this.chatMessages;
+  }
+
+  async createChatMessage(data: InsertChatMessage): Promise<ChatMessage> {
+    const message: ChatMessage = {
+      id: randomUUID(),
+      ...data,
+      timestamp: new Date(),
+    };
+    this.chatMessages.push(message);
+    return message;
+  }
+
+  async clearChatHistory(): Promise<void> {
+    this.chatMessages = [];
   }
 }
 

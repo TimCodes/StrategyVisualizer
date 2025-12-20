@@ -83,6 +83,19 @@ export const dateRangeSchema = z.object({
   end: z.date(),
 });
 
+export const chatMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  timestamp: z.date(),
+  context: z.any().optional(),
+});
+
+export const insertChatMessageSchema = chatMessageSchema.omit({
+  id: true,
+  timestamp: true,
+});
+
 export const insertStrategySchema = strategySchema.omit({ 
   id: true, 
   createdAt: true 
@@ -111,3 +124,5 @@ export type DateRange = z.infer<typeof dateRangeSchema>;
 export type InsertStrategy = z.infer<typeof insertStrategySchema>;
 export type InsertTrade = z.infer<typeof insertTradeSchema>;
 export type InsertBacktest = z.infer<typeof insertBacktestSchema>;
+export type ChatMessage = z.infer<typeof chatMessageSchema>;
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;

@@ -5,9 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Bot, User, TrendingUp, BarChart3, Activity } from "lucide-react";
+import { Send, Bot, User, TrendingUp, BarChart3, Activity, Trash2 } from "lucide-react";
 import { TradingService } from "@/services/tradingServices";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { ChatMessage as ChatMessageType } from "@shared/schema";
 
 interface ChatMessage {
   id: string;
@@ -17,19 +19,36 @@ interface ChatMessage {
   context?: any;
 }
 
+const defaultWelcome: ChatMessage = {
+  id: "welcome",
+  role: "assistant",
+  content: "Hello! I'm your AI trading assistant. I have access to your current portfolio, strategies, and market data. Ask me anything about your trading performance, market analysis, or strategy optimization!",
+  timestamp: new Date(),
+};
+
 export default function Chat() {
   const { toast } = useToast();
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: "Hello! I'm your AI trading assistant. I have access to your current portfolio, strategies, and market data. Ask me anything about your trading performance, market analysis, or strategy optimization!",
-      timestamp: new Date(),
-    }
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([defaultWelcome]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const { data: chatHistory } = useQuery<ChatMessageType[]>({
+    queryKey: ["/api/chat/messages"],
+  });
+
+  useEffect(() => {
+    if (chatHistory && chatHistory.length > 0) {
+      const parsed = chatHistory.map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        timestamp: new Date(m.timestamp),
+        context: m.context,
+      }));
+      setMessages([defaultWelcome, ...parsed]);
+    }
+  }, [chatHistory]);
 
   // Fetch current application state for AI context
   const { data: portfolioMetrics } = useQuery({
@@ -83,64 +102,6 @@ export default function Chat() {
     };
   };
 
-  const simulateAIResponse = (userMessage: string, context: ReturnType<typeof getContextSummary>): string => {
-    const lowerMessage = userMessage.toLowerCase();
-    
-    if (lowerMessage.includes("portfolio") || lowerMessage.includes("performance")) {
-      if (context.portfolio) {
-        return `Based on your current portfolio data:
-
-• Total Portfolio Value: $${context.portfolio.totalValue.toLocaleString()}
-• Total Return: ${context.portfolio.totalReturnPercent.toFixed(2)}%
-• Sharpe Ratio: ${context.portfolio.sharpeRatio.toFixed(2)}
-• Max Drawdown: ${context.portfolio.maxDrawdown.toFixed(2)}%
-• Win Rate: ${context.portfolio.winRate.toFixed(1)}%
-
-Your portfolio is performing well with a positive Sharpe ratio of ${context.portfolio.sharpeRatio.toFixed(2)}, indicating good risk-adjusted returns. The ${context.portfolio.winRate.toFixed(1)}% win rate shows consistent profitable trades.`;
-      }
-    }
-
-    if (lowerMessage.includes("strategy") || lowerMessage.includes("strategies")) {
-      return `You currently have ${context.totalStrategies} strategies, with ${context.activeStrategies} active. ${
-        context.bestStrategy ? 
-        `Your best performing strategy is "${context.bestStrategy.name}" with a ${context.bestStrategy.performance.toFixed(2)}% return and ${context.bestStrategy.sharpeRatio.toFixed(2)} Sharpe ratio.` :
-        ""
-      }
-
-Consider reviewing inactive strategies for potential improvements or reactivation based on current market conditions.`;
-    }
-
-    if (lowerMessage.includes("market") || lowerMessage.includes("price")) {
-      const marketInfo = context.marketSummary.map(m => 
-        `${m.symbol}: $${m.price.toLocaleString()} (${m.change > 0 ? '+' : ''}${m.change.toFixed(2)}%)`
-      ).join('\n');
-      
-      return `Current market snapshot:\n\n${marketInfo}\n\nBased on the price movements, consider adjusting your strategy allocations to capitalize on current trends.`;
-    }
-
-    if (lowerMessage.includes("trade") || lowerMessage.includes("recent")) {
-      const recentTradesInfo = context.recentTrades.map(t => 
-        `${t.type.toUpperCase()} ${t.symbol}: $${t.price.toLocaleString()} (P&L: ${t.pnl > 0 ? '+' : ''}$${t.pnl.toFixed(2)})`
-      ).join('\n');
-      
-      return `Your recent trading activity shows ${context.recentTrades.filter(t => t.pnl > 0).length} profitable trades out of ${context.recentTrades.length} recent trades.`;
-    }
-
-    if (lowerMessage.includes("backtest")) {
-      return `You have ${context.backtestCount} backtest results. Regular backtesting helps validate strategy performance before live deployment. Consider running new backtests with updated parameters to optimize your strategies.`;
-    }
-
-    // Default response with context overview
-    return `I can help you analyze your trading data. Here's a quick overview:
-
-Portfolio: $${context.portfolio?.totalValue.toLocaleString() || 'N/A'} (${context.portfolio?.totalReturnPercent.toFixed(2) || 'N/A'}% return)
-Strategies: ${context.activeStrategies}/${context.totalStrategies} active
-Recent Trades: ${context.recentTrades.length} trades
-Backtests: ${context.backtestCount} completed
-
-Ask me about portfolio performance, strategy analysis, market insights, or trading recommendations!`;
-  };
-
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
 
@@ -156,21 +117,25 @@ Ask me about portfolio performance, strategy analysis, market insights, or tradi
     setIsLoading(true);
 
     try {
-      // Get current context
       const context = getContextSummary();
       
-      // Simulate AI processing delay
-      await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+      const response = await apiRequest("POST", "/api/chat", {
+        message: inputMessage,
+        context,
+      });
+      
+      const data = await response.json();
 
       const aiResponse: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: data.id || (Date.now() + 1).toString(),
         role: "assistant",
-        content: simulateAIResponse(inputMessage, context),
+        content: data.message,
         timestamp: new Date(),
         context,
       };
 
       setMessages(prev => [...prev, aiResponse]);
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/messages"] });
     } catch (error) {
       toast({
         title: "Error",
@@ -186,6 +151,24 @@ Ask me about portfolio performance, strategy analysis, market insights, or tradi
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+    }
+  };
+
+  const handleClearHistory = async () => {
+    try {
+      await apiRequest("DELETE", "/api/chat/messages");
+      setMessages([defaultWelcome]);
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/messages"] });
+      toast({
+        title: "Chat cleared",
+        description: "Your chat history has been cleared.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to clear chat history.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -274,11 +257,21 @@ Ask me about portfolio performance, strategy analysis, market insights, or tradi
 
         {/* Chat Interface */}
         <Card className="flex-1 bg-surface border-border flex flex-col">
-          <CardHeader className="border-b border-border">
+          <CardHeader className="border-b border-border flex flex-row items-center justify-between">
             <CardTitle className="text-text-primary flex items-center space-x-2">
               <Bot className="w-5 h-5 text-primary" />
               <span>Trading Assistant</span>
             </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearHistory}
+              className="text-text-secondary hover:text-destructive"
+              data-testid="button-clear-chat"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Clear
+            </Button>
           </CardHeader>
           
           <CardContent className="flex-1 flex flex-col p-0">
