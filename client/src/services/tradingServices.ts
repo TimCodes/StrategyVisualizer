@@ -106,12 +106,12 @@ export class TradingService {
     return data.map(hydrateMarketData);
   }
 
-  static async getPriceData(symbol: string, timeframe: string = "1d"): Promise<PriceData[]> {
-    const res = await fetch(`/api/markets/price?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`);
+  static async getPriceData(symbol: string, days: number = 30): Promise<PriceData[]> {
+    const res = await fetch(`/api/markets/price?symbol=${encodeURIComponent(symbol)}&days=${days}`);
     if (!res.ok) {
-      return Array.from({ length: 30 }, (_, i) => {
+      return Array.from({ length: days }, (_, i) => {
         const date = new Date();
-        date.setDate(date.getDate() - (29 - i));
+        date.setDate(date.getDate() - (days - 1 - i));
         const basePrice = 42000 + Math.random() * 2000;
         return {
           timestamp: date,
