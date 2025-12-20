@@ -50,7 +50,7 @@ export default function Sidebar() {
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
             <BarChart3 className="text-white text-sm" />
           </div>
-          <h1 className="text-xl font-bold text-text-primary">TradingView</h1>
+          <h1 className="text-xl font-bold text-text-primary">Praxis</h1>
         </div>
         
         <nav className="space-y-2">

@@ -1,8 +1,8 @@
-# Trading Dashboard Application
+# Praxis - Trading Dashboard Application
 
 ## Overview
 
-This is a comprehensive trading dashboard application built for algorithmic trading strategy management and analysis. The platform provides real-time market data visualization, portfolio analytics, strategy backtesting capabilities, and trade execution monitoring. The application uses a modern full-stack architecture with React frontend, Express backend, and PostgreSQL database integration through Drizzle ORM.
+Praxis is a comprehensive trading dashboard application built for algorithmic trading strategy management and analysis. The platform provides real-time market data visualization, portfolio analytics, strategy backtesting capabilities, and trade execution monitoring. The application uses a modern full-stack architecture with React frontend, Express backend, and PostgreSQL database integration through Drizzle ORM.
 
 ## User Preferences
 
