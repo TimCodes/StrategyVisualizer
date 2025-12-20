@@ -52,8 +52,6 @@ export default function TradeForm({ onSubmit, onCancel, isPending }: TradeFormPr
       type: "buy",
       quantity: 0,
       price: 0,
-      pnl: 0,
-      timestamp: new Date(),
       strategyId: "",
     },
   });
@@ -65,8 +63,7 @@ export default function TradeForm({ onSubmit, onCancel, isPending }: TradeFormPr
   }, [strategies]);
 
   const handleSubmit = async (data: FormData) => {
-    const { pnl, timestamp, ...submitData } = data;
-    await onSubmit(submitData as any);
+    await onSubmit(data);
   };
 
   return (

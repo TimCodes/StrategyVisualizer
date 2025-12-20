@@ -89,7 +89,9 @@ export const insertStrategySchema = strategySchema.omit({
 });
 
 export const insertTradeSchema = tradeSchema.omit({ 
-  id: true 
+  id: true,
+  pnl: true,
+  timestamp: true
 });
 
 export const insertBacktestSchema = backtestResultSchema.omit({ 
