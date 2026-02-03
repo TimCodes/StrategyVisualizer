@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Header from "@/components/layout/Header";
 import MarketChart from "@/components/dashboard/MarketChart";
+import OrderBook from "@/components/markets/OrderBook";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -148,6 +149,8 @@ export default function Markets() {
             />
           </CardContent>
         </Card>
+
+        <OrderBook symbol={selectedSymbol} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card className="bg-surface border-border">

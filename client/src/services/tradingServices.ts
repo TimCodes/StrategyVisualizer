@@ -9,6 +9,7 @@ import {
   InsertStrategy,
   InsertTrade,
   InsertBacktest,
+  OrderBook,
 } from "@shared/schema";
 
 function hydrateStrategy(data: any): Strategy {
@@ -52,6 +53,13 @@ function hydratePerformanceData(data: any): PerformanceData {
   return {
     ...data,
     date: new Date(data.date),
+  };
+}
+
+function hydrateOrderBook(data: any): OrderBook {
+  return {
+    ...data,
+    lastUpdate: new Date(data.lastUpdate),
   };
 }
 
@@ -210,5 +218,12 @@ export class TradingService {
     if (!res.ok) throw new Error('Failed to run backtest');
     const result = await res.json();
     return hydrateBacktest(result);
+  }
+
+  static async getOrderBook(symbol: string): Promise<OrderBook> {
+    const res = await fetch(`/api/markets/orderbook?symbol=${encodeURIComponent(symbol)}`);
+    if (!res.ok) throw new Error('Failed to fetch order book');
+    const data = await res.json();
+    return hydrateOrderBook(data);
   }
 }

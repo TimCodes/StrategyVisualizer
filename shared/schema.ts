@@ -226,3 +226,21 @@ export type InsertTrade = z.infer<typeof insertTradeSchema>;
 export type InsertBacktest = z.infer<typeof insertBacktestSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+
+export const orderBookEntrySchema = z.object({
+  price: z.number(),
+  quantity: z.number(),
+  total: z.number(),
+});
+
+export const orderBookSchema = z.object({
+  symbol: z.string(),
+  bids: z.array(orderBookEntrySchema),
+  asks: z.array(orderBookEntrySchema),
+  spread: z.number(),
+  spreadPercent: z.number(),
+  lastUpdate: z.date(),
+});
+
+export type OrderBookEntry = z.infer<typeof orderBookEntrySchema>;
+export type OrderBook = z.infer<typeof orderBookSchema>;
