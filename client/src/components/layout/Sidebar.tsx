@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { BarChart3, Bot, History, Briefcase, Globe, Settings, MessageSquare } from "lucide-react";
+import { BarChart3, Bot, History, Briefcase, Globe, Settings, MessageSquare, Swords } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigationItems = [
@@ -32,6 +32,11 @@ const navigationItems = [
     name: "AI Chat",
     href: "/chat",
     icon: MessageSquare,
+  },
+  {
+    name: "LLM Arena",
+    href: "/arena",
+    icon: Swords,
   },
   {
     name: "Settings",

@@ -106,18 +106,73 @@ export const dateRangeSchema = z.object({
   end: z.date(),
 });
 
+export const llmProviderSchema = z.enum(["openai", "anthropic", "gemini"]);
+export type LLMProvider = z.infer<typeof llmProviderSchema>;
+
+export const llmModelSchema = z.enum([
+  "gpt-5",
+  "claude-sonnet-4-5",
+  "claude-opus-4-5",
+  "claude-haiku-4-5",
+  "gemini-pro",
+]);
+export type LLMModel = z.infer<typeof llmModelSchema>;
+
 export const chatMessageSchema = z.object({
   id: z.string(),
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   timestamp: z.date(),
   context: z.any().optional(),
+  provider: llmProviderSchema.optional(),
+  model: llmModelSchema.optional(),
 });
 
 export const insertChatMessageSchema = chatMessageSchema.omit({
   id: true,
   timestamp: true,
 });
+
+export const chatRequestSchema = z.object({
+  message: z.string().min(1),
+  provider: llmProviderSchema.optional().default("openai"),
+  model: llmModelSchema.optional().default("gpt-5"),
+  context: z.any().optional(),
+  stream: z.boolean().optional().default(false),
+});
+
+export type ChatRequest = z.infer<typeof chatRequestSchema>;
+
+export const tradeSignalSchema = z.object({
+  id: z.string(),
+  action: z.enum(["buy", "sell", "hold"]),
+  symbol: z.string(),
+  confidence: z.number().min(0).max(100),
+  entryPrice: z.number().optional(),
+  stopLoss: z.number().optional(),
+  takeProfit: z.number().optional(),
+  reasoning: z.string().optional(),
+  provider: llmProviderSchema,
+  model: llmModelSchema,
+  timestamp: z.date(),
+});
+
+export type TradeSignal = z.infer<typeof tradeSignalSchema>;
+
+export const riskSettingsSchema = z.object({
+  maxPositionSize: z.number().default(10000),
+  maxPositionsPerSymbol: z.number().default(3),
+  maxTotalPositions: z.number().default(10),
+  maxPortfolioRisk: z.number().default(5),
+  defaultStopLoss: z.number().default(5),
+  defaultTakeProfit: z.number().default(15),
+  maxDrawdown: z.number().default(20),
+  dailyLossLimit: z.number().default(2),
+  riskPerTrade: z.number().default(1),
+  enforceRiskLimits: z.boolean().default(true),
+});
+
+export type RiskSettings = z.infer<typeof riskSettingsSchema>;
 
 export const insertStrategySchema = strategySchema.omit({ 
   id: true, 

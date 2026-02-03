@@ -5,8 +5,10 @@ import { registerTradeRoutes } from "./routes/trades";
 import { registerBacktestRoutes } from "./routes/backtests";
 import { registerPortfolioRoutes } from "./routes/portfolio";
 import { registerMarketRoutes } from "./routes/markets";
-import { registerChatRoutes } from "./routes/chat";
+import { registerLLMRoutes } from "./routes/llm";
+import { registerRiskRoutes } from "./routes/risk";
 import { registerSettingsRoutes } from "./routes/settings";
+import { initializeWebSocket } from "./ws";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   registerStrategyRoutes(app);
@@ -14,10 +16,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerBacktestRoutes(app);
   registerPortfolioRoutes(app);
   registerMarketRoutes(app);
-  registerChatRoutes(app);
+  registerLLMRoutes(app);
+  registerRiskRoutes(app);
   registerSettingsRoutes(app);
 
   const httpServer = createServer(app);
+  
+  initializeWebSocket(httpServer);
 
   return httpServer;
 }
