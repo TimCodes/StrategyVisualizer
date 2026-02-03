@@ -209,23 +209,32 @@ export default function Settings() {
                   Exchange
                 </Label>
                 <Select
-                  value={formState.exchange || ""}
+                  value={formState.exchange || "coingecko"}
                   onValueChange={(value) => setFormState({ ...formState, exchange: value as any })}
                 >
                   <SelectTrigger data-testid="select-exchange">
                     <SelectValue placeholder="Select exchange" />
                   </SelectTrigger>
                   <SelectContent className="bg-surface border-border">
+                    <SelectItem value="coingecko">CoinGecko (Free API)</SelectItem>
+                    <SelectItem value="kraken">Kraken</SelectItem>
                     <SelectItem value="binance">Binance</SelectItem>
                     <SelectItem value="coinbase">Coinbase Pro</SelectItem>
-                    <SelectItem value="kraken">Kraken</SelectItem>
                     <SelectItem value="alpaca">Alpaca</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-text-secondary mt-1">
+                  {formState.exchange === "kraken" && "Live market data from Kraken exchange. API keys optional for market data."}
+                  {formState.exchange === "coingecko" && "Free aggregated market data from CoinGecko."}
+                  {formState.exchange === "binance" && "Binance exchange (coming soon)"}
+                  {formState.exchange === "coinbase" && "Coinbase Pro exchange (coming soon)"}
+                  {formState.exchange === "alpaca" && "Alpaca for stocks and crypto (coming soon)"}
+                  {!formState.exchange && "Select an exchange for market data."}
+                </p>
               </div>
 
               <p className="text-sm text-text-secondary">
-                API keys are securely managed through environment variables. Contact your administrator to update API credentials.
+                For trading features, add API credentials as environment variables (KRAKEN_API_KEY, KRAKEN_API_SECRET).
               </p>
             </CardContent>
           </Card>

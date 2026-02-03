@@ -8,6 +8,7 @@ import { registerMarketRoutes } from "./routes/markets";
 import { registerLLMRoutes } from "./routes/llm";
 import { registerRiskRoutes } from "./routes/risk";
 import { registerSettingsRoutes } from "./routes/settings";
+import { registerKrakenRoutes } from "./routes/kraken";
 import { initializeWebSocket } from "./ws";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -19,6 +20,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerLLMRoutes(app);
   registerRiskRoutes(app);
   registerSettingsRoutes(app);
+  registerKrakenRoutes(app);
 
   const httpServer = createServer(app);
   

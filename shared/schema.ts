@@ -199,6 +199,9 @@ export type PortfolioMetrics = z.infer<typeof portfolioMetricsSchema>;
 export type PerformanceData = z.infer<typeof performanceDataSchema>;
 export type DateRange = z.infer<typeof dateRangeSchema>;
 
+export const exchangeSchema = z.enum(["binance", "coinbase", "kraken", "alpaca", "coingecko"]);
+export type Exchange = z.infer<typeof exchangeSchema>;
+
 export const settingsSchema = z.object({
   id: z.string().default("default"),
   refreshInterval: z.enum(["5s", "10s", "30s", "1m"]).default("30s"),
@@ -209,7 +212,7 @@ export const settingsSchema = z.object({
   riskLimit: z.number().default(2),
   maxPositions: z.number().default(10),
   autoStopLoss: z.boolean().default(false),
-  exchange: z.enum(["binance", "coinbase", "kraken", "alpaca"]).optional(),
+  exchange: exchangeSchema.optional().default("coingecko"),
   tradeAlerts: z.boolean().default(true),
   performanceAlerts: z.boolean().default(false),
   systemAlerts: z.boolean().default(true),
