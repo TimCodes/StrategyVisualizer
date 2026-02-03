@@ -60,6 +60,20 @@ Preferred communication style: Simple, everyday language. Direct and focused res
 - Auto-refresh every 5 seconds
 - API endpoint: `/api/markets/orderbook?symbol=<symbol>`
 
+### Kraken Exchange Integration
+- Kraken API service in `server/services/exchanges/kraken.ts`
+- Public endpoints (no API key needed): ticker, OHLC, order book, asset pairs
+- Private endpoints (requires API key): balance, orders, trading
+- Selectable in Settings page under "Exchange"
+- API endpoints:
+  - `GET /api/kraken/markets` - All market tickers
+  - `GET /api/kraken/ticker?symbol=BTC/USD` - Single ticker
+  - `GET /api/kraken/ohlc?symbol=BTC/USD&interval=1440` - OHLC data
+  - `GET /api/kraken/orderbook?symbol=BTC/USD` - Order book
+  - `GET /api/kraken/balance` - Account balance (requires API key)
+  - `POST /api/kraken/order` - Place order (requires API key)
+- Environment variables: `KRAKEN_API_KEY`, `KRAKEN_API_SECRET`
+
 ## System Architecture
 
 ### Frontend Architecture
