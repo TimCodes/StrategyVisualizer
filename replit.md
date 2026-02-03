@@ -8,6 +8,25 @@ Praxis is a comprehensive trading dashboard application built for algorithmic tr
 
 Preferred communication style: Simple, everyday language. Direct and focused responses without promotional language or selling.
 
+## Recent Changes
+
+- **February 3, 2026**: Created comparative analysis document (`TradeWithAI_vs_Praxis_Analysis.md`) comparing Praxis with TradeWithAI GitHub repository
+- **February 3, 2026**: Created implementation plan (`IMPLEMENTATION_PLAN.md`) for adding TradeWithAI features:
+  - Multi-LLM Integration (Claude, Gemini, GPT-5)
+  - WebSocket Real-Time Communication
+  - LLM Arena for model comparison
+  - Trade Signal Parsing
+  - Risk Management System
+
+## Planned Enhancements
+
+The following features are planned based on the TradeWithAI integration analysis:
+- **Multi-LLM Support**: Provider abstraction layer for OpenAI, Anthropic (Claude), and Google (Gemini)
+- **WebSocket Layer**: Real-time updates for market data, portfolio changes, and LLM streaming
+- **LLM Arena**: Side-by-side AI model comparison interface
+- **Signal Parsing**: NLP extraction of buy/sell signals from AI responses
+- **Risk Management**: Position limits, stop-loss automation, drawdown monitoring
+
 ## System Architecture
 
 ### Frontend Architecture
