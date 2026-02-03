@@ -52,6 +52,14 @@ Preferred communication style: Simple, everyday language. Direct and focused res
 - Daily loss limits
 - Trade blocking when limits exceeded
 
+### Order Book Visualization
+- Order book component in `client/src/components/markets/OrderBook.tsx`
+- Real-time bid/ask display with price levels
+- Visual depth chart showing market liquidity
+- Spread calculation and display
+- Auto-refresh every 5 seconds
+- API endpoint: `/api/markets/orderbook?symbol=<symbol>`
+
 ## System Architecture
 
 ### Frontend Architecture
