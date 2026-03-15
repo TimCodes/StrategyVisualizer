@@ -1,0 +1,591 @@
+# Praxis — QuantConnect LEAN Integration Prompt
+
+## Project Context
+
+I have an existing full-stack algorithmic trading dashboard called **Praxis** (repo: `https://github.com/TimCodes/StrategyVisualizer`). It is a monorepo (NPM Workspaces) with three packages:
+
+- `@app/client` — React 18 + TypeScript + Vite + shadcn/ui + Tailwind (dark theme) + Recharts + TanStack Query + Wouter
+- `@app/server` — Express + TypeScript + Socket.IO + Drizzle ORM + PostgreSQL (Neon)
+- `@app/shared` — Zod schemas + Drizzle table definitions
+
+The app already supports: strategy CRUD, backtesting (Monte Carlo simulation), portfolio management, live crypto market data (CoinGecko/Kraken), multi-LLM chat (OpenAI/Anthropic/Gemini), LLM Arena, risk management, and settings. Deployment target is Replit Autoscale.
+
+**I need to add three major features:**
+
+1. **QuantConnect LEAN CLI integration** — real backtesting engine replacing the current Monte Carlo simulation
+2. **Monaco code editor** — VS Code-like Python editor for writing/editing LEAN strategies in the browser
+3. **AI Strategy Agent** — an LLM-powered agent that generates new LEAN-compatible Python strategies using the QuantConnect LEAN library API
+
+---
+
+## Feature 1: QuantConnect LEAN CLI Integration
+
+### Overview
+
+Integrate the QuantConnect LEAN CLI (`lean-cli`) so users can write Python strategies and run real backtests against historical market data using the LEAN engine via Docker.
+
+### Server-Side Implementation
+
+Create a new service at `packages/server/services/lean.ts` and route file at `packages/server/routes/lean.ts`.
+
+#### LEAN Service (`packages/server/services/lean.ts`)
+
+```typescript
+// This service:
+// 1. Manages LEAN project folders on disk under a /lean-projects directory
+// 2. Receives Python strategy code from the client
+// 3. Saves it into a LEAN project structure
+// 4. Spawns `lean backtest <project>` via child_process
+// 5. Streams stdout/stderr to the client via Socket.IO in real-time
+// 6. Parses the backtest-results.json output and returns structured results
+// 7. Maps LEAN results to the existing backtest schema for storage
+
+import { spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+
+const LEAN_PROJECTS_DIR = path.join(process.cwd(), 'lean-projects');
+
+export async function createProject(projectName: string): Promise<string> {
+    // Create project dir if it doesn't exist
+    // Run: lean project-create --language python "<projectName>"
+    // Return the project directory path
+}
+
+export async function runBacktest(
+    projectName: string,
+    pythonCode: string,
+    socketId?: string // for streaming progress via Socket.IO
+): Promise<LeanBacktestResult> {
+    // 1. Ensure project exists (create if not)
+    // 2. Write pythonCode to <projectDir>/main.py
+    // 3. Spawn: lean backtest <projectName> --output results
+    // 4. Stream stdout/stderr lines to Socket.IO room if socketId provided
+    // 5. On close, parse results/backtest-results.json
+    // 6. Map to our backtest schema and return
+}
+
+export function listProjects(): string[] {
+    // List all directories in LEAN_PROJECTS_DIR
+}
+
+export function getProjectCode(projectName: string): string {
+    // Read and return main.py from the project
+}
+```
+
+#### LEAN Routes (`packages/server/routes/lean.ts`)
+
+Add these endpoints:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/lean/projects` | List all LEAN projects |
+| `POST` | `/api/lean/projects` | Create a new LEAN project |
+| `GET` | `/api/lean/projects/:name/code` | Get project source code |
+| `PUT` | `/api/lean/projects/:name/code` | Update project source code |
+| `POST` | `/api/lean/projects/:name/backtest` | Run backtest (accepts `{ code: string }`) |
+| `GET` | `/api/lean/projects/:name/results` | Get latest backtest results |
+| `DELETE` | `/api/lean/projects/:name` | Delete a LEAN project |
+
+#### WebSocket Events
+
+Extend the existing Socket.IO server in `packages/server/ws.ts`:
+
+- `lean:backtest:start` — emitted when a backtest begins (includes projectName)
+- `lean:backtest:log` — emitted per stdout/stderr line during backtest execution
+- `lean:backtest:progress` — emitted with percentage if parseable from LEAN output
+- `lean:backtest:complete` — emitted with the parsed results JSON
+- `lean:backtest:error` — emitted if the backtest fails
+
+#### Result Mapping
+
+Map LEAN's `backtest-results.json` output to the existing Praxis backtest schema:
+
+```typescript
+// LEAN output fields → Praxis backtest fields
+interface LeanResultMapping {
+    totalReturn: number;      // from Statistics["Total Net Profit"]
+    sharpeRatio: number;      // from Statistics["Sharpe Ratio"]
+    maxDrawdown: number;      // from Statistics["Drawdown"]
+    winRate: number;          // from Statistics["Win Rate"]
+    totalTrades: number;      // from Statistics["Total Orders"]
+    equityCurve: DataPoint[]; // from Charts["Strategy Equity"].Series["Equity"].Values
+    benchmark: DataPoint[];   // from Charts["Benchmark"].Series if available
+}
+```
+
+### Environment Setup
+
+The LEAN CLI requires Docker. Add to the Replit environment:
+
+1. Install `lean-cli` via pip: `pip install lean`
+2. Run `lean init` in the project root to create the `lean.json` config
+3. Ensure Docker is available (Replit may need a Docker-in-Docker or alternative approach — if Docker is unavailable on Replit, fall back to running LEAN directly via `dotnet` with the open-source LEAN engine cloned as a submodule)
+4. Set environment variable `LEAN_CLI_INSTALLED=true` in `.env`
+
+### Fallback: Direct LEAN Engine (No Docker)
+
+If Docker is not available on Replit, clone the LEAN engine and run directly:
+
+```bash
+git clone https://github.com/QuantConnect/Lean.git lean-engine
+cd lean-engine
+dotnet build QuantConnect.Lean.Launcher
+```
+
+Then modify the service to spawn:
+```bash
+dotnet run --project lean-engine/QuantConnect.Lean.Launcher -- --config config.json
+```
+
+Where `config.json` points to the user's strategy file and data directory.
+
+---
+
+## Feature 2: Monaco Code Editor
+
+### Overview
+
+Add a full Monaco editor component integrated into the Backtesting page (and accessible from a new "Strategy Editor" page/panel). Users write Python code targeting the QuantConnect LEAN API, with syntax highlighting, autocomplete for LEAN classes, and a "Run Backtest" button.
+
+### Install Dependencies
+
+```bash
+cd packages/client
+npm install @monaco-editor/react
+```
+
+### Component: `StrategyEditor.tsx`
+
+Create at `packages/client/src/components/strategy-editor/StrategyEditor.tsx`:
+
+```tsx
+// Full-featured strategy editor with:
+// 1. Monaco editor configured for Python with vs-dark theme
+// 2. LEAN API autocomplete (custom completions for QCAlgorithm, self.AddEquity, etc.)
+// 3. Template selector dropdown — pre-built LEAN strategy templates
+// 4. "Run Backtest" button that POSTs code to /api/lean/projects/:name/backtest
+// 5. Real-time backtest log output panel below the editor (fed by Socket.IO)
+// 6. Split-pane layout: editor on left, results/charts on right
+// 7. File tree sidebar showing LEAN project files
+// 8. Save/Load project functionality
+
+import Editor, { Monaco } from '@monaco-editor/react';
+import { useSocket } from '../../hooks/useSocket';
+
+interface StrategyEditorProps {
+    projectName: string;
+    initialCode?: string;
+    onBacktestComplete?: (results: BacktestResult) => void;
+}
+
+export function StrategyEditor({ projectName, initialCode, onBacktestComplete }: StrategyEditorProps) {
+    const [code, setCode] = useState(initialCode || DEFAULT_LEAN_TEMPLATE);
+    const [logs, setLogs] = useState<string[]>([]);
+    const [isRunning, setIsRunning] = useState(false);
+    const socket = useSocket();
+
+    // Listen for backtest streaming events
+    useEffect(() => {
+        if (!socket) return;
+        socket.on('lean:backtest:log', (line: string) => {
+            setLogs(prev => [...prev, line]);
+        });
+        socket.on('lean:backtest:complete', (results) => {
+            setIsRunning(false);
+            onBacktestComplete?.(results);
+        });
+        socket.on('lean:backtest:error', (error) => {
+            setIsRunning(false);
+            setLogs(prev => [...prev, `ERROR: ${error}`]);
+        });
+        return () => {
+            socket.off('lean:backtest:log');
+            socket.off('lean:backtest:complete');
+            socket.off('lean:backtest:error');
+        };
+    }, [socket]);
+
+    const handleEditorMount = (editor: any, monaco: Monaco) => {
+        // Register LEAN Python autocomplete provider
+        registerLeanCompletions(monaco);
+    };
+
+    const handleRun = async () => {
+        setIsRunning(true);
+        setLogs([]);
+        const response = await fetch(`/api/lean/projects/${projectName}/backtest`, {
+            method: 'POST',
+            body: JSON.stringify({ code }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        // Results also arrive via Socket.IO for streaming
+    };
+
+    return (
+        <div className="flex flex-col h-full">
+            {/* Toolbar: Run button, template selector, save, project name */}
+            <div className="flex items-center gap-2 p-2 border-b border-border">
+                <Button onClick={handleRun} disabled={isRunning}>
+                    {isRunning ? <Loader2 className="animate-spin" /> : <Play />}
+                    {isRunning ? 'Running...' : 'Run Backtest'}
+                </Button>
+                <TemplateSelector onSelect={setCode} />
+                <span className="text-sm text-muted-foreground ml-auto">{projectName}</span>
+            </div>
+
+            {/* Split: Editor + Results */}
+            <div className="flex flex-1 overflow-hidden">
+                <div className="flex-1 min-w-0">
+                    <Editor
+                        height="100%"
+                        defaultLanguage="python"
+                        theme="vs-dark"
+                        value={code}
+                        onChange={(val) => setCode(val || '')}
+                        onMount={handleEditorMount}
+                        options={{
+                            fontSize: 14,
+                            minimap: { enabled: false },
+                            scrollBeyondLastLine: false,
+                            automaticLayout: true,
+                            tabSize: 4,
+                        }}
+                    />
+                </div>
+
+                {/* Log output panel */}
+                <div className="w-80 border-l border-border bg-background overflow-y-auto p-2 font-mono text-xs">
+                    {logs.map((line, i) => (
+                        <div key={i} className={line.includes('ERROR') ? 'text-red-400' : 'text-muted-foreground'}>
+                            {line}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+```
+
+### LEAN Autocomplete Registration
+
+Create `packages/client/src/components/strategy-editor/leanCompletions.ts`:
+
+```typescript
+// Register custom Monaco completions for QuantConnect LEAN Python API
+// Include: QCAlgorithm methods, common indicators (SMA, EMA, RSI, MACD, BB),
+// data types (TradeBar, QuoteBar, Slice), order types, resolution enums,
+// and common patterns like:
+//   self.AddEquity("SPY", Resolution.Daily)
+//   self.SMA("SPY", 20, Resolution.Daily)
+//   self.SetCash(100000)
+//   self.SetStartDate(2020, 1, 1)
+//   self.SetEndDate(2023, 12, 31)
+//   self.Schedule.On(...)
+//   self.Plot(...)
+```
+
+### Default Templates
+
+Create `packages/client/src/components/strategy-editor/templates.ts` with 5-8 starter templates:
+
+1. **Basic Moving Average Crossover** — SMA 20/50 crossover on SPY
+2. **RSI Mean Reversion** — RSI(14) overbought/oversold on equities
+3. **Bollinger Bands** — BB(20,2) mean reversion
+4. **MACD Momentum** — MACD crossover strategy
+5. **Pairs Trading** — Simple pairs/spread trading
+6. **Multi-Asset Momentum** — Rotational momentum across multiple assets
+7. **Options Covered Call** — Basic covered call writing
+8. **Crypto Momentum** — BTC/ETH momentum with crypto-specific data
+
+Each template should be a complete, runnable LEAN algorithm class:
+
+```python
+from AlgorithmImports import *
+
+class MovingAverageCrossover(QCAlgorithm):
+    def initialize(self):
+        self.set_start_date(2022, 1, 1)
+        self.set_end_date(2023, 12, 31)
+        self.set_cash(100000)
+
+        self.spy = self.add_equity("SPY", Resolution.DAILY).symbol
+        self.fast = self.sma(self.spy, 20, Resolution.DAILY)
+        self.slow = self.sma(self.spy, 50, Resolution.DAILY)
+        self.set_warm_up(50)
+
+    def on_data(self, data):
+        if self.is_warming_up:
+            return
+        if self.fast.current.value > self.slow.current.value:
+            self.set_holdings(self.spy, 1.0)
+        else:
+            self.liquidate(self.spy)
+```
+
+### Page Integration
+
+**Option A (Recommended):** Add the editor as a panel/tab within the existing **Backtesting** page. When "Run New Backtest" is clicked, open the editor in a slide-over or full-page panel. Results flow back into the existing backtesting results table.
+
+**Option B:** Create a new **Editor** page in the sidebar navigation (between Strategies and Backtesting). This page is the dedicated IDE experience with editor, file tree, and results.
+
+Either way, ensure the editor integrates with the existing Wouter routing and sidebar navigation.
+
+---
+
+## Feature 3: AI Strategy Generation Agent
+
+### Overview
+
+Add an AI agent that generates complete, runnable QuantConnect LEAN Python strategies from natural language descriptions. The agent uses the existing multi-LLM infrastructure (OpenAI/Anthropic/Gemini) with a specialized system prompt containing LEAN API documentation and examples.
+
+### Agent Service (`packages/server/services/lean-agent.ts`)
+
+```typescript
+// The LEAN Strategy Agent:
+// 1. Takes a natural language strategy description from the user
+// 2. Uses the LLM (user's choice of provider) with a LEAN-specialized system prompt
+// 3. Generates a complete, runnable QCAlgorithm Python class
+// 4. Validates the generated code has required structure (class, Initialize, OnData)
+// 5. Optionally auto-runs a backtest on the generated code
+// 6. Can iteratively refine based on backtest results or user feedback
+
+export interface StrategyGenerationRequest {
+    description: string;           // "Create a momentum strategy that rotates between top 5 S&P 500 sectors monthly"
+    provider: 'openai' | 'anthropic' | 'gemini';
+    model?: string;                // specific model variant
+    constraints?: {
+        startDate?: string;
+        endDate?: string;
+        initialCapital?: number;
+        assets?: string[];         // e.g., ["SPY", "QQQ", "IWM"]
+        maxDrawdown?: number;      // risk constraint
+        rebalanceFrequency?: string;
+    };
+    autoBacktest?: boolean;        // automatically run backtest after generation
+    refinementContext?: {          // for iterative refinement
+        previousCode: string;
+        backtestResults?: any;
+        userFeedback: string;
+    };
+}
+
+export interface StrategyGenerationResult {
+    code: string;                  // Complete Python strategy code
+    explanation: string;           // Natural language explanation of the strategy
+    parameters: Record<string, any>; // Extracted configurable parameters
+    backtestResults?: any;         // If autoBacktest was true
+}
+```
+
+### System Prompt for LEAN Agent
+
+Create a comprehensive system prompt at `packages/server/services/lean-agent-prompt.ts`:
+
+```typescript
+export const LEAN_AGENT_SYSTEM_PROMPT = `
+You are an expert quantitative trading strategy developer specializing in the QuantConnect LEAN algorithmic trading framework.
+
+Your role is to generate complete, production-ready Python strategies that run on the LEAN engine.
+
+## LEAN Framework Rules:
+1. Every strategy must be a class inheriting from QCAlgorithm
+2. Must import from AlgorithmImports: \`from AlgorithmImports import *\`
+3. Must implement initialize(self) and on_data(self, data) methods
+4. Use snake_case for LEAN API methods (self.set_start_date, self.add_equity, etc.)
+5. Always set: start_date, end_date, cash in initialize()
+6. Always use self.set_warm_up() when using indicators
+7. Check self.is_warming_up in on_data before trading
+
+## Available Indicators:
+- SMA, EMA, DEMA, TEMA, WMA
+- RSI, Stochastic, Williams %R
+- MACD, ADX, Aroon
+- Bollinger Bands, Keltner Channels, Donchian Channels
+- ATR, Standard Deviation
+- ROC, Momentum, CCI
+
+## Available Data:
+- Equities: self.add_equity("SYMBOL", Resolution.DAILY)
+- Crypto: self.add_crypto("BTCUSD", Resolution.HOUR)
+- Forex: self.add_forex("EURUSD", Resolution.DAILY)
+- Options: self.add_option("SPY")
+- Futures: self.add_future(Futures.Indices.SP500EMini)
+
+## Risk Management:
+- self.set_holdings(symbol, percentage) for portfolio allocation
+- self.liquidate() to close all positions
+- self.stop_market_order() for stop losses
+- self.limit_order() for take profits
+
+## Best Practices:
+- Always include docstrings explaining the strategy logic
+- Add self.plot() calls for key indicators and signals
+- Use self.log() for important trade decisions
+- Include configurable parameters as class attributes
+- Handle edge cases (no data, market holidays, etc.)
+- Set realistic slippage and fees
+
+## Output Format:
+Return ONLY the complete Python code. No markdown fences. No explanation outside the code.
+The code must be immediately runnable by the LEAN engine.
+`;
+```
+
+### Agent Routes (`packages/server/routes/lean.ts` — extend)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/lean/agent/generate` | Generate a strategy from description |
+| `POST` | `/api/lean/agent/refine` | Refine a strategy with feedback |
+| `POST` | `/api/lean/agent/explain` | Explain what a strategy does |
+| `POST` | `/api/lean/agent/optimize` | Suggest parameter optimizations |
+
+### Client Component: `StrategyAgent.tsx`
+
+Create at `packages/client/src/components/strategy-editor/StrategyAgent.tsx`:
+
+```tsx
+// A panel/modal that:
+// 1. Has a text input for describing the desired strategy in plain English
+// 2. Has dropdowns for: LLM provider, asset class, timeframe, risk level
+// 3. Shows a "Generate" button
+// 4. Displays the generated code in a read-only Monaco preview
+// 5. Has "Use This Strategy" button that loads code into the main editor
+// 6. Has "Refine" button for iterative improvement
+// 7. Shows explanation of the strategy logic
+// 8. Optionally shows auto-backtest results inline
+```
+
+### Integration with Existing Chat
+
+Extend the existing AI Chat page to recognize strategy-related queries and offer to generate runnable LEAN code. When the chat detects trading strategy discussion, show a "Generate as LEAN Strategy" action button that pipes the conversation context into the agent.
+
+---
+
+## Database Schema Updates
+
+Add to `packages/shared/schema.ts`:
+
+```typescript
+// New table: lean_projects
+export const leanProjects = pgTable('lean_projects', {
+    id: serial('id').primaryKey(),
+    name: text('name').notNull().unique(),
+    code: text('code').notNull(),           // Current main.py content
+    description: text('description'),        // Strategy description
+    generatedBy: text('generated_by'),       // 'manual' | 'agent-openai' | 'agent-anthropic' | 'agent-gemini'
+    lastBacktestId: integer('last_backtest_id'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// New table: lean_backtest_results (extends existing backtests table or standalone)
+export const leanBacktestResults = pgTable('lean_backtest_results', {
+    id: serial('id').primaryKey(),
+    projectId: integer('project_id').references(() => leanProjects.id),
+    rawResults: jsonb('raw_results'),        // Full LEAN output JSON
+    totalReturn: real('total_return'),
+    sharpeRatio: real('sharpe_ratio'),
+    maxDrawdown: real('max_drawdown'),
+    winRate: real('win_rate'),
+    totalTrades: integer('total_trades'),
+    equityCurve: jsonb('equity_curve'),
+    startDate: timestamp('start_date'),
+    endDate: timestamp('end_date'),
+    initialCapital: real('initial_capital'),
+    status: text('status').default('pending'), // pending | running | completed | failed
+    errorLog: text('error_log'),
+    runAt: timestamp('run_at').defaultNow(),
+});
+```
+
+Run `drizzle-kit push` to apply schema changes.
+
+---
+
+## UI/UX Requirements
+
+### Dark Theme Consistency
+
+All new components must use the existing dark theme (shadcn/ui + Tailwind). The Monaco editor should use `vs-dark` theme. Log output panels should use `bg-background` with monospace font.
+
+### Layout
+
+The strategy editor should be a full-height layout with:
+- **Top toolbar**: Run button (green), Stop button (red when running), template dropdown, save button, project selector
+- **Main area**: Horizontal split — Monaco editor (left, ~65%) and results panel (right, ~35%)
+- **Results panel tabs**: "Output" (streaming logs), "Results" (metrics + charts), "Trades" (trade list)
+- **Bottom status bar**: Connection status, last run time, LEAN engine status
+
+### Navigation
+
+Add "Editor" to the sidebar navigation between "Strategies" and "Backtesting". Use a code/terminal icon (e.g., Lucide `Code2` or `Terminal`).
+
+### Agent UI
+
+The AI Strategy Agent should be accessible via:
+1. A button in the editor toolbar ("✨ Generate with AI")
+2. A slide-over panel from the right side
+3. Contains: text area for description, provider selector, constraint inputs, generate button
+4. Generated code previews in a mini Monaco editor within the panel
+5. "Insert into Editor" button to load generated code
+
+---
+
+## File Structure (New Files to Create)
+
+```
+packages/
+├── client/src/
+│   ├── pages/
+│   │   └── Editor.tsx                          # New page for strategy editor
+│   ├── components/
+│   │   └── strategy-editor/
+│   │       ├── StrategyEditor.tsx              # Main Monaco editor component
+│   │       ├── StrategyAgent.tsx               # AI generation panel
+│   │       ├── BacktestLogPanel.tsx            # Streaming log output
+│   │       ├── BacktestResultsPanel.tsx        # Results display with charts
+│   │       ├── TemplateSelector.tsx            # Strategy template dropdown
+│   │       ├── ProjectSelector.tsx             # LEAN project picker
+│   │       ├── leanCompletions.ts              # Monaco autocomplete for LEAN
+│   │       └── templates.ts                    # Strategy template definitions
+│   └── hooks/
+│       └── useLeanBacktest.ts                  # Hook for backtest lifecycle
+│
+├── server/
+│   ├── routes/
+│   │   └── lean.ts                             # LEAN API + Agent routes
+│   └── services/
+│       ├── lean.ts                             # LEAN CLI orchestration
+│       ├── lean-agent.ts                       # AI strategy generation
+│       └── lean-agent-prompt.ts                # System prompt for agent
+│
+└── shared/
+    └── schema.ts                               # Add lean_projects + lean_backtest_results tables
+```
+
+---
+
+## Implementation Priority
+
+1. **Phase 1**: Monaco editor component + template system + new Editor page with sidebar nav
+2. **Phase 2**: LEAN service (project management + backtest execution + result parsing)
+3. **Phase 3**: LEAN API routes + Socket.IO streaming + integration with existing backtest table
+4. **Phase 4**: AI Strategy Agent (generation + refinement + auto-backtest)
+5. **Phase 5**: Polish — autocomplete, error handling, project management UI, result comparison
+
+---
+
+## Important Notes
+
+- **Preserve all existing functionality.** Do not break or remove any existing pages, routes, or features.
+- **Use the existing tech stack** — React 18, TypeScript, Express, Socket.IO, shadcn/ui, Tailwind, TanStack Query, Wouter, Drizzle ORM, Zod.
+- **Follow existing code patterns** — look at how existing routes (strategies, backtests, markets) are structured and follow the same patterns for LEAN routes.
+- **The Monaco editor must work within the existing Vite build setup** — `@monaco-editor/react` should work out of the box with Vite.
+- **If Docker is unavailable on Replit**, implement the direct LEAN engine fallback using `dotnet` CLI with the open-source QuantConnect/Lean repository.
+- **All new API endpoints should validate with Zod** schemas defined in `@app/shared`.
+- **WebSocket events should follow the existing Socket.IO patterns** in `packages/server/ws.ts`.
