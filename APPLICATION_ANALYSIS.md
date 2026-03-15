@@ -1,371 +1,317 @@
-# Praxis - Algorithmic Trading Analytics Platform
+# Praxis — Application Analysis
 
-## Application Analysis
-
-**Application Name:** Praxis  
-**Type:** Full-Stack Algorithmic Trading Analytics Dashboard  
-**Stack:** React + Express + TypeScript + PostgreSQL (optional) + OpenAI Integration
+**Last Updated:** March 2026
 
 ---
 
-## Architecture Diagram
+## Summary
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              CLIENT (React + Vite)                          │
-│  ┌────────────────────────────────────────────────────────────────────────┐ │
-│  │                            App.tsx (Router)                            │ │
-│  │  ┌─────────────────────────────────────────────────────────────────┐   │ │
-│  │  │                    Pages (7 Main Views)                         │   │ │
-│  │  │  ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌─────────┐           │   │ │
-│  │  │  │ Overview │ │Strategies│ │Backtesting│ │Portfolio│           │   │ │
-│  │  │  └──────────┘ └──────────┘ └───────────┘ └─────────┘           │   │ │
-│  │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐                        │   │ │
-│  │  │  │ Markets  │ │  Chat    │ │ Settings │                        │   │ │
-│  │  │  └──────────┘ └──────────┘ └──────────┘                        │   │ │
-│  │  └─────────────────────────────────────────────────────────────────┘   │ │
-│  │                                                                        │ │
-│  │  ┌─────────────────────────────────────────────────────────────────┐   │ │
-│  │  │                    Components                                   │   │ │
-│  │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │   │ │
-│  │  │  │Dashboard │ │Backtesting│ │ Trades  │ │ Layout  │           │   │ │
-│  │  │  │ Widgets  │ │  Forms   │ │  Forms  │ │(Sidebar)│           │   │ │
-│  │  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘           │   │ │
-│  │  └─────────────────────────────────────────────────────────────────┘   │ │
-│  │                                                                        │ │
-│  │  ┌─────────────────────────────────────────────────────────────────┐   │ │
-│  │  │                    Services                                     │   │ │
-│  │  │  ┌──────────────────────────────────────────────────────────┐   │   │ │
-│  │  │  │              TradingService (API Client)                 │   │   │ │
-│  │  │  │  - Strategy CRUD    - Trade Management                   │   │   │ │
-│  │  │  │  - Backtest Runner  - Portfolio Metrics                  │   │   │ │
-│  │  │  │  - Market Data      - Chat/AI Integration                │   │   │ │
-│  │  │  └──────────────────────────────────────────────────────────┘   │   │ │
-│  │  └─────────────────────────────────────────────────────────────────┘   │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      │ HTTP/REST API
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          SERVER (Express + Node.js)                         │
-│  ┌────────────────────────────────────────────────────────────────────────┐ │
-│  │                         routes.ts (API Layer)                          │ │
-│  │  ┌──────────────────────────────────────────────────────────────────┐  │ │
-│  │  │ /api/strategies  │ /api/trades    │ /api/backtests             │  │ │
-│  │  │ /api/portfolio   │ /api/markets   │ /api/chat                  │  │ │
-│  │  │ /api/settings                                                   │  │ │
-│  │  └──────────────────────────────────────────────────────────────────┘  │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
-│                                      │                                      │
-│                                      ▼                                      │
-│  ┌────────────────────────────────────────────────────────────────────────┐ │
-│  │                      storage.ts (Data Layer)                           │ │
-│  │  ┌──────────────────────────────────────────────────────────────────┐  │ │
-│  │  │                    MemStorage (In-Memory)                       │  │ │
-│  │  │  - Strategies Map   - Trades Map      - Backtests Map          │  │ │
-│  │  │  - Market Data      - Performance     - Chat Messages          │  │ │
-│  │  │  - Portfolio Metrics                                           │  │ │
-│  │  └──────────────────────────────────────────────────────────────────┘  │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
-│                                      │                                      │
-│                                      ▼                                      │
-│  ┌────────────────────────────────────────────────────────────────────────┐ │
-│  │               External Integrations                                    │ │
-│  │  ┌────────────────┐  ┌────────────────┐  ┌────────────────────────┐   │ │
-│  │  │   CoinGecko    │  │    OpenAI      │  │   PostgreSQL (Neon)    │   │ │
-│  │  │ (Market Data)  │  │  (AI Chat)     │  │   (Settings Only)      │   │ │
-│  │  └────────────────┘  └────────────────┘  └────────────────────────┘   │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+**Praxis** is a full-stack algorithmic trading dashboard built for strategy management, portfolio tracking, backtesting, and AI-assisted trading decisions. It integrates live cryptocurrency market data, multiple large language models (OpenAI, Anthropic, Google Gemini), and a real-time WebSocket layer into a single unified platform.
+
+The application is structured as a **monorepo** using NPM Workspaces, with three independently scoped packages (`@app/client`, `@app/server`, `@app/shared`) living under a single `packages/` directory. The UI is a dark-themed React dashboard with a persistent sidebar for navigation across eight pages.
 
 ---
 
-## Data Model Diagram
+## Architecture Design
+
+### Monorepo Layout
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              DATA MODELS                                    │
-└─────────────────────────────────────────────────────────────────────────────┘
+/
+├── packages/
+│   ├── client/          (@app/client)
+│   │   ├── package.json
+│   │   ├── index.html
+│   │   └── src/
+│   │       ├── App.tsx              — Router & providers
+│   │       ├── pages/               — 8 full-page views
+│   │       ├── components/          — Feature UI components
+│   │       ├── contexts/            — SocketContext (WebSocket)
+│   │       ├── hooks/               — useSocket, custom hooks
+│   │       ├── services/            — API + mock data helpers
+│   │       └── lib/                 — queryClient, utils
+│   │
+│   ├── server/          (@app/server)
+│   │   ├── package.json
+│   │   ├── index.ts                 — Express entry point
+│   │   ├── routes.ts                — Route registration hub
+│   │   ├── storage.ts               — In-memory data layer
+│   │   ├── db.ts                    — PostgreSQL connection (Neon)
+│   │   ├── ws.ts                    — Socket.IO WebSocket server
+│   │   ├── vite.ts                  — Vite dev server integration
+│   │   ├── routes/
+│   │   │   ├── strategies.ts
+│   │   │   ├── trades.ts
+│   │   │   ├── backtests.ts
+│   │   │   ├── portfolio.ts
+│   │   │   ├── markets.ts
+│   │   │   ├── llm.ts
+│   │   │   ├── risk.ts
+│   │   │   ├── settings.ts
+│   │   │   └── kraken.ts
+│   │   └── services/
+│   │       ├── llm/
+│   │       │   ├── openai.ts
+│   │       │   ├── anthropic.ts
+│   │       │   ├── gemini.ts
+│   │       │   ├── index.ts
+│   │       │   └── types.ts
+│   │       ├── exchanges/
+│   │       │   └── kraken.ts
+│   │       ├── risk.ts
+│   │       └── signalParser.ts
+│   │
+│   └── shared/          (@app/shared)
+│       ├── package.json
+│       └── schema.ts                — All Zod schemas + Drizzle types
+│
+├── package.json          — Root: workspaces config, shared deps
+├── vite.config.ts        — Points root to packages/client
+├── tsconfig.json         — Path aliases: @/* and @shared/*
+├── drizzle.config.ts     — Schema at packages/shared/schema.ts
+└── tailwind.config.ts    — Content from packages/client
+```
 
-┌───────────────────────┐       ┌───────────────────────┐
-│       Strategy        │       │         Trade         │
-├───────────────────────┤       ├───────────────────────┤
-│ id: string            │───┐   │ id: string            │
-│ name: string          │   │   │ symbol: string        │
-│ description: string   │   │   │ type: "buy" | "sell"  │
-│ type: StrategyType    │   └──►│ quantity: number      │
-│ status: Status        │       │ price: number         │
-│ performance: number   │       │ pnl: number           │
-│ sharpeRatio: number   │       │ timestamp: Date       │
-│ maxDrawdown: number   │       │ strategyId: string    │
-│ winRate: number       │       └───────────────────────┘
-│ totalTrades: number   │
-│ createdAt: Date       │       ┌───────────────────────┐
-└───────────────────────┘       │    BacktestResult     │
-                                ├───────────────────────┤
-┌───────────────────────┐       │ id: string            │
-│      MarketData       │       │ strategyName: string  │
-├───────────────────────┤       │ strategyDescription   │
-│ id: string            │       │ startDate: Date       │
-│ symbol: string        │       │ endDate: Date         │
-│ name: string          │       │ totalReturn: number   │
-│ price: number         │       │ sharpeRatio: number   │
-│ change: number        │       │ maxDrawdown: number   │
-│ changePercent: number │       │ winRate: number       │
-│ volume: number        │       │ totalTrades: number   │
-│ timestamp: Date       │       │ status: BacktestStatus│
-└───────────────────────┘       │ createdAt: Date       │
-                                └───────────────────────┘
-┌───────────────────────┐
-│    PortfolioMetrics   │       ┌───────────────────────┐
-├───────────────────────┤       │      ChatMessage      │
-│ totalValue: number    │       ├───────────────────────┤
-│ totalReturn: number   │       │ id: string            │
-│ totalReturnPercent    │       │ role: "user"|"assistant"
-│ sharpeRatio: number   │       │ content: string       │
-│ maxDrawdown: number   │       │ timestamp: Date       │
-│ winRate: number       │       │ context?: any         │
-│ volatility: number    │       └───────────────────────┘
-│ beta: number          │
-└───────────────────────┘       ┌───────────────────────┐
-                                │       Settings        │
-┌───────────────────────┐       ├───────────────────────┤
-│    PerformanceData    │       │ id: string            │
-├───────────────────────┤       │ refreshInterval       │
-│ date: Date            │       │ darkMode: boolean     │
-│ portfolioValue: number│       │ notifications: boolean│
-│ benchmarkValue: number│       │ autoRefresh: boolean  │
-│ drawdown: number      │       │ defaultPositionSize   │
-└───────────────────────┘       │ riskLimit: number     │
-                                │ maxPositions: number  │
-┌───────────────────────┐       │ autoStopLoss: boolean │
-│      PriceData        │       │ exchange?: string     │
-├───────────────────────┤       │ tradeAlerts: boolean  │
-│ timestamp: Date       │       │ performanceAlerts     │
-│ open: number          │       │ systemAlerts: boolean │
-│ high: number          │       │ email?: string        │
-│ low: number           │       └───────────────────────┘
-│ close: number         │
-│ volume: number        │
-└───────────────────────┘
+### System Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  BROWSER (@app/client)                  │
+│                                                         │
+│  React 18 + Wouter + TanStack Query + shadcn/ui         │
+│  ┌────────────────────────────────────────────────┐     │
+│  │  Pages: Overview / Strategies / Backtesting /  │     │
+│  │         Portfolio / Markets / Chat / Arena /   │     │
+│  │         Settings                               │     │
+│  └────────────────────────────────────────────────┘     │
+│         │ REST (fetch)              │ Socket.IO          │
+└─────────┼───────────────────────────┼────────────────────┘
+          │                           │
+          ▼                           ▼
+┌─────────────────────────────────────────────────────────┐
+│               EXPRESS SERVER (@app/server)              │
+│                                                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │  REST API    │  │  WebSocket   │  │  Vite Dev    │  │
+│  │  /api/*      │  │  Socket.IO   │  │  Middleware  │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+│          │                  │                           │
+│  ┌───────▼──────────────────▼───────────────────────┐  │
+│  │              Route Handlers (9 modules)           │  │
+│  │  strategies · trades · backtests · portfolio      │  │
+│  │  markets · llm · risk · settings · kraken         │  │
+│  └──────────────────────────┬────────────────────────┘  │
+│                             │                           │
+│  ┌──────────────────────────▼────────────────────────┐  │
+│  │              Services Layer                       │  │
+│  │  ┌──────────────────┐  ┌─────────────────────┐   │  │
+│  │  │   LLM Providers  │  │  Exchange APIs      │   │  │
+│  │  │  OpenAI          │  │  Kraken REST        │   │  │
+│  │  │  Anthropic       │  │  CoinGecko (market) │   │  │
+│  │  │  Gemini          │  └─────────────────────┘   │  │
+│  │  └──────────────────┘                             │  │
+│  │  ┌──────────────────┐  ┌─────────────────────┐   │  │
+│  │  │   Risk Engine    │  │   Signal Parser     │   │  │
+│  │  │  Position limits │  │  NLP → trade signal │   │  │
+│  │  │  Drawdown checks │  └─────────────────────┘   │  │
+│  │  └──────────────────┘                             │  │
+│  └───────────────────────────────────────────────────┘  │
+│                             │                           │
+│  ┌──────────────────────────▼────────────────────────┐  │
+│  │              Data Layer                           │  │
+│  │  MemStorage (in-memory) ◄──► PostgreSQL (Neon)   │  │
+│  │  (strategies, trades,          (settings only)   │  │
+│  │   backtests, portfolio,                          │  │
+│  │   market data, chat)                             │  │
+│  └───────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+```
+User Action
+    │
+    ├─► REST API call → Route Handler → Storage / External API → JSON response
+    │
+    └─► WebSocket event → Socket.IO → Broadcast to all clients
+              (trade signals, risk alerts, real-time updates)
 ```
 
 ---
 
 ## Feature Breakdown
 
-### 1. Dashboard Overview
-**Description:** Central hub displaying key portfolio metrics, performance charts, active strategies, market data, recent trades, and backtest results at a glance.
+### 1. Overview Dashboard
+The landing page giving a full snapshot of the portfolio at a glance.
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Overview Page | [`client/src/pages/Overview.tsx`](client/src/pages/Overview.tsx) | Main dashboard container |
-| MetricsGrid | [`client/src/components/dashboard/MetricsGrid.tsx`](client/src/components/dashboard/MetricsGrid.tsx) | Displays key KPIs (Total Value, Returns, Sharpe, Win Rate) |
-| PerformanceChart | [`client/src/components/dashboard/PerformanceChart.tsx`](client/src/components/dashboard/PerformanceChart.tsx) | Portfolio vs benchmark visualization |
-| StrategyList | [`client/src/components/dashboard/StrategyList.tsx`](client/src/components/dashboard/StrategyList.tsx) | Quick strategy performance summary |
-| MarketChart | [`client/src/components/dashboard/MarketChart.tsx`](client/src/components/dashboard/MarketChart.tsx) | Live price chart visualization |
-| TradeHistory | [`client/src/components/dashboard/TradeHistory.tsx`](client/src/components/dashboard/TradeHistory.tsx) | Recent trades table |
-| BacktestingTable | [`client/src/components/dashboard/BacktestingTable.tsx`](client/src/components/dashboard/BacktestingTable.tsx) | Backtest results summary |
+- **Key Metrics Grid** — Total portfolio value, total return %, Sharpe ratio, win rate
+- **Performance Chart** — Portfolio vs benchmark over time (Recharts line chart)
+- **Strategy List** — Compact view of all active strategies with performance indicators
+- **Market Chart** — Live price chart for the selected market
+- **Trade History** — Recent trades table with P&L per trade
+- **Backtest Results** — Latest backtest summaries at a glance
 
 ---
 
 ### 2. Strategy Management
-**Description:** Full CRUD operations for trading strategies with detailed metrics tracking including performance, Sharpe ratio, max drawdown, and win rate.
+Full CRUD for trading strategies, each with rich performance metadata.
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Strategies Page | [`client/src/pages/Strategies.tsx`](client/src/pages/Strategies.tsx) | Strategy list and management UI |
-| Strategy Form | [`client/src/components/strategies/`](client/src/components/strategies/) | Create/edit strategy forms |
-| API Routes | [`server/routes.ts`](server/routes.ts) (lines 18-78) | REST endpoints for CRUD |
-| Storage | [`server/storage.ts`](server/storage.ts) (lines 270-304) | Data persistence layer |
-
-**Strategy Types Supported:**
-- Momentum
-- Mean Reversion
-- Trend Following
-- Arbitrage
+- Create, edit, and delete strategies
+- Supported types: **Momentum**, **Mean Reversion**, **Trend Following**, **Arbitrage**
+- Status tracking: Active, Inactive, Paused
+- Tracks: Performance %, Sharpe Ratio, Max Drawdown, Win Rate, Total Trades
+- View strategies in a card or table layout
 
 ---
 
 ### 3. Backtesting Engine
-**Description:** Historical strategy testing with configurable parameters including date range, initial capital, and symbol selection. Generates comprehensive performance metrics.
+Run historical simulations to test strategies before deploying capital.
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Backtesting Page | [`client/src/pages/Backtesting.tsx`](client/src/pages/Backtesting.tsx) | Backtest configuration & results |
-| BacktestForm | [`client/src/components/backtesting/BacktestForm.tsx`](client/src/components/backtesting/BacktestForm.tsx) | Parameter input form |
-| BacktestDetail | [`client/src/components/backtesting/BacktestDetail.tsx`](client/src/components/backtesting/BacktestDetail.tsx) | Individual result display |
-| BacktestComparison | [`client/src/components/backtesting/BacktestComparison.tsx`](client/src/components/backtesting/BacktestComparison.tsx) | Side-by-side comparison |
-| Run Backtest API | [`server/routes.ts`](server/routes.ts) (lines 140-211) | Monte Carlo simulation engine |
-
-**Backtest Metrics Generated:**
-- Total Return (%)
-- Sharpe Ratio
-- Maximum Drawdown
-- Win Rate
-- Total Trades
+- Configure date range, initial capital, and symbol
+- Runs a Monte Carlo-style simulation on the server
+- Outputs: Total Return, Sharpe Ratio, Max Drawdown, Win Rate, Trade Count
+- **Side-by-side comparison** of multiple backtest results
+- Per-result detail view with full performance breakdown
 
 ---
 
 ### 4. Portfolio Management
-**Description:** Complete portfolio tracking with trade logging, P&L calculation, and performance analytics. Supports buy/sell operations with automatic profit/loss tracking.
+Track live positions and analyse overall portfolio health.
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Portfolio Page | [`client/src/pages/Portfolio.tsx`](client/src/pages/Portfolio.tsx) | Portfolio dashboard |
-| TradeForm | [`client/src/components/trades/TradeForm.tsx`](client/src/components/trades/TradeForm.tsx) | Log new trades |
-| Metrics API | [`server/routes.ts`](server/routes.ts) (lines 213-239) | Portfolio metrics endpoint |
-| P&L Calculator | [`server/storage.ts`](server/storage.ts) (lines 320-368) | Automatic P&L calculation |
-
-**Portfolio Metrics:**
-- Total Portfolio Value
-- Total Return / Return %
-- Sharpe Ratio
-- Max Drawdown
-- Win Rate
-- Volatility
-- Beta
+- Log buy/sell trades with quantity, price, and strategy link
+- Automatic **P&L calculation** (FIFO cost basis)
+- Real-time portfolio metrics: Value, Return, Sharpe, Drawdown, Win Rate, Volatility, Beta
+- Performance history chart over time
 
 ---
 
 ### 5. Live Market Data
-**Description:** Real-time cryptocurrency market data integration via CoinGecko API with price charts, volume, and 24h change indicators.
+Real-time crypto market data via CoinGecko and Kraken APIs.
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Markets Page | [`client/src/pages/Markets.tsx`](client/src/pages/Markets.tsx) | Market overview & charts |
-| Market API | [`server/routes.ts`](server/routes.ts) (lines 241-319) | CoinGecko integration |
-| Price Chart API | [`server/routes.ts`](server/routes.ts) (lines 274-319) | Historical OHLCV data |
-
-**Supported Markets:**
-- BTC/USD (Bitcoin)
-- ETH/USD (Ethereum)
-- SOL/USD (Solana)
-- ADA/USD (Cardano)
-- XRP/USD (Ripple)
+- Live price, 24h change, and volume for BTC, ETH, SOL, ADA, XRP
+- Historical OHLCV candlestick data for price charts
+- **Kraken integration** for order book data and direct exchange connectivity
+- Order book view (bids/asks, spread, depth)
 
 ---
 
-### 6. AI Trading Assistant
-**Description:** GPT-5 powered conversational AI that provides trading insights, strategy recommendations, and portfolio analysis with full context awareness.
+### 6. AI Trading Assistant (Chat)
+Multi-LLM conversational interface for trading analysis and strategy discussion.
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Chat Page | [`client/src/pages/Chat.tsx`](client/src/pages/Chat.tsx) | Chat interface |
-| Chat API | [`server/routes.ts`](server/routes.ts) (lines 337-424) | OpenAI integration |
-| Message Storage | [`server/storage.ts`](server/storage.ts) (lines 464-480) | Chat history persistence |
-
-**AI Capabilities:**
-- Portfolio analysis
-- Strategy recommendations
-- Market insights
-- Risk assessment
-- Performance explanations
+- Supports **OpenAI GPT-5**, **Anthropic Claude** (Sonnet/Opus/Haiku 4.5), **Google Gemini Pro**
+- Full chat history per session with clear/reset capability
+- Portfolio context automatically available to the AI
+- **Trade Signal Parsing**: AI responses are scanned for buy/sell/hold signals with confidence scores
+- Streaming and non-streaming response modes
 
 ---
 
-### 7. Settings & Configuration
-**Description:** Comprehensive settings panel for trading parameters, notifications, display preferences, and exchange configuration.
+### 7. LLM Arena
+Side-by-side AI model comparison tool for evaluating different providers on the same prompt.
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Settings Page | [`client/src/pages/Settings.tsx`](client/src/pages/Settings.tsx) | Settings form interface |
-| Settings API | [`server/routes.ts`](server/routes.ts) (lines 355-375) | Settings CRUD |
-| DB Persistence | [`server/storage.ts`](server/storage.ts) (lines 482-578) | PostgreSQL storage |
-| Schema | [`shared/schema.ts`](shared/schema.ts) (lines 5-20) | Settings table definition |
-
-**Configurable Options:**
-- Refresh Interval (5s, 10s, 30s, 1m)
-- Dark Mode toggle
-- Auto Refresh
-- Default Position Size
-- Risk Limit (%)
-- Max Positions
-- Auto Stop Loss
-- Exchange Selection (Binance, Coinbase, Kraken, Alpaca)
-- Alert Preferences (Trade, Performance, System)
-- Email Notifications
+- Submit a single prompt to multiple LLM providers simultaneously
+- View responses side-by-side for direct comparison
+- Switch between providers (OpenAI / Anthropic / Gemini) and model variants
+- Useful for benchmarking AI quality for trading use cases
 
 ---
 
-## API Endpoints Summary
+### 8. Risk Management
+Server-side risk enforcement layer that validates trades before execution.
+
+- Configurable limits: max position size, max positions per symbol, max total positions
+- Portfolio-level limits: max portfolio risk %, daily loss limit, max drawdown
+- Per-trade controls: default stop loss %, default take profit %
+- Automatic validation against active portfolio state
+- Risk alerts broadcast via WebSocket in real time
+
+---
+
+### 9. Settings
+Persistent configuration panel with PostgreSQL-backed storage.
+
+- **Display:** Dark mode, refresh interval (5s / 10s / 30s / 1m), auto-refresh
+- **Trading:** Default position size, risk limit %, max positions, auto stop-loss
+- **Exchange:** Select active exchange (Binance, Coinbase, Kraken, Alpaca, CoinGecko)
+- **Alerts:** Trade alerts, performance alerts, system alerts, email notifications
+- Settings persisted to PostgreSQL via Drizzle ORM (falls back to in-memory if no DB)
+
+---
+
+## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/strategies` | List all strategies |
-| GET | `/api/strategies/:id` | Get strategy by ID |
-| POST | `/api/strategies` | Create new strategy |
+| GET | `/api/strategies/:id` | Get a strategy |
+| POST | `/api/strategies` | Create strategy |
 | PATCH | `/api/strategies/:id` | Update strategy |
 | DELETE | `/api/strategies/:id` | Delete strategy |
 | GET | `/api/trades` | List all trades |
-| POST | `/api/trades` | Log new trade |
+| POST | `/api/trades` | Log a trade |
 | GET | `/api/backtests` | List backtest results |
-| POST | `/api/backtests` | Create backtest record |
-| PATCH | `/api/backtests/:id` | Update backtest |
-| POST | `/api/backtests/run` | Execute backtest simulation |
+| POST | `/api/backtests` | Save a backtest record |
+| PATCH | `/api/backtests/:id` | Update a backtest |
+| POST | `/api/backtests/run` | Execute a backtest simulation |
 | GET | `/api/portfolio/metrics` | Get portfolio metrics |
 | GET | `/api/portfolio/performance` | Get performance history |
 | GET | `/api/markets` | Get live market data |
-| GET | `/api/markets/price` | Get price history |
+| GET | `/api/markets/price` | Get historical price data |
+| GET | `/api/markets/orderbook` | Get order book (Kraken) |
 | GET | `/api/chat/messages` | Get chat history |
-| POST | `/api/chat` | Send message to AI |
+| POST | `/api/chat` | Send message to LLM |
 | DELETE | `/api/chat/messages` | Clear chat history |
-| GET | `/api/settings` | Get settings |
-| PUT | `/api/settings` | Update settings |
+| GET | `/api/llm/status` | LLM provider status |
+| GET | `/api/risk/assessment` | Current risk assessment |
+| PUT | `/api/risk/settings` | Update risk settings |
+| GET | `/api/settings` | Get app settings |
+| PUT | `/api/settings` | Update app settings |
+| GET | `/api/kraken/ticker` | Kraken ticker data |
+| GET | `/api/kraken/ohlcv` | Kraken OHLCV data |
 
 ---
 
 ## Technology Stack
 
-### Frontend
-- **Framework:** React 18 with TypeScript
-- **Routing:** Wouter
-- **State Management:** TanStack Query v5
-- **Forms:** React Hook Form + Zod
-- **Styling:** Tailwind CSS + shadcn/ui
-- **Charts:** Recharts
-- **Build Tool:** Vite
+### Frontend (`@app/client`)
+| Layer | Technology |
+|---|---|
+| Framework | React 18 + TypeScript |
+| Routing | Wouter |
+| Server State | TanStack Query v5 |
+| Forms | React Hook Form + Zod |
+| UI Components | shadcn/ui (Radix UI primitives) |
+| Styling | Tailwind CSS (dark theme) |
+| Charts | Recharts |
+| Animations | Framer Motion |
+| Real-time | Socket.IO Client |
+| Build | Vite |
 
-### Backend
-- **Runtime:** Node.js with Express
-- **Language:** TypeScript (tsx)
-- **Validation:** Zod
-- **Database ORM:** Drizzle ORM
-- **Database:** PostgreSQL (Neon) - optional, falls back to in-memory
+### Backend (`@app/server`)
+| Layer | Technology |
+|---|---|
+| Runtime | Node.js + TypeScript (tsx) |
+| Framework | Express.js |
+| Real-time | Socket.IO |
+| Validation | Zod |
+| ORM | Drizzle ORM |
+| Database | PostgreSQL (Neon) — optional |
+| AI — OpenAI | openai SDK (GPT-5) |
+| AI — Anthropic | @anthropic-ai/sdk (Claude 4.5) |
+| AI — Google | @google/generative-ai (Gemini Pro) |
 
-### External APIs
-- **Market Data:** CoinGecko API (free tier)
-- **AI Chat:** OpenAI GPT-5
+### Shared (`@app/shared`)
+| Layer | Technology |
+|---|---|
+| Type Safety | Zod schemas + TypeScript |
+| DB Schema | Drizzle ORM table definitions |
+| Validation | drizzle-zod insert schemas |
 
----
-
-## File Structure
-
-```
-├── client/
-│   └── src/
-│       ├── App.tsx                    # Main app & routing
-│       ├── components/
-│       │   ├── backtesting/           # Backtest-specific components
-│       │   ├── dashboard/             # Dashboard widgets
-│       │   ├── layout/                # Sidebar, Header
-│       │   ├── strategies/            # Strategy components
-│       │   ├── trades/                # Trade components
-│       │   └── ui/                    # shadcn/ui components
-│       ├── hooks/                     # Custom React hooks
-│       ├── lib/                       # Utilities, query client
-│       ├── pages/                     # Page components
-│       └── services/
-│           └── tradingServices.ts     # API client
-├── server/
-│   ├── index.ts                       # Server entry point
-│   ├── routes.ts                      # API routes
-│   ├── storage.ts                     # Data layer
-│   ├── db.ts                          # Database connection
-│   └── vite.ts                        # Vite dev server config
-├── shared/
-│   └── schema.ts                      # Shared types & validation
-└── package.json
-```
+### Infrastructure
+| Concern | Approach |
+|---|---|
+| Monorepo | NPM Workspaces (`packages/*`) |
+| Dev Server | Vite (served through Express middleware) |
+| DB Migrations | Drizzle Kit (`drizzle-kit push`) |
+| Deployment | Replit Autoscale |
