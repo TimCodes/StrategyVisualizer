@@ -1,0 +1,7 @@
+{
+  "name": "@app/client",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "React frontend application"
+}

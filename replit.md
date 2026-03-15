@@ -2,7 +2,33 @@
 
 ## Overview
 
-Praxis is a comprehensive trading dashboard application built for algorithmic trading strategy management and analysis. The platform provides real-time market data visualization, portfolio analytics, strategy backtesting capabilities, and trade execution monitoring. The application uses a modern full-stack architecture with React frontend, Express backend, and PostgreSQL database integration through Drizzle ORM.
+Praxis is a comprehensive trading dashboard application built for algorithmic trading strategy management and analysis. The platform provides real-time market data visualization, portfolio analytics, strategy backtesting capabilities, and trade execution monitoring. The application uses a **monorepo architecture** with NPM Workspaces, with a React frontend, Express backend, and PostgreSQL database integration through Drizzle ORM.
+
+## Monorepo Structure
+
+```
+/
+├── packages/
+│   ├── client/          (@app/client)  — React/Vite frontend
+│   │   ├── package.json
+│   │   ├── index.html
+│   │   └── src/
+│   ├── server/          (@app/server)  — Express API + WebSocket
+│   │   ├── package.json
+│   │   ├── index.ts
+│   │   ├── routes/
+│   │   └── services/
+│   └── shared/          (@app/shared)  — Shared types & schema
+│       ├── package.json
+│       └── schema.ts
+├── package.json         — Root workspace config (workspaces: ["packages/*"])
+├── vite.config.ts       — Points to packages/client
+├── tsconfig.json        — Path aliases for @/* and @shared/*
+├── drizzle.config.ts    — Points to packages/shared/schema.ts
+└── tailwind.config.ts   — Content paths for packages/client
+```
+
+The workflow runs: `NODE_ENV=development tsx packages/server/index.ts`
 
 ## User Preferences
 
