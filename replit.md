@@ -36,6 +36,15 @@ Preferred communication style: Simple, everyday language. Direct and focused res
 
 ## Recent Changes
 
+- **March 15, 2026**: Added three major new features — LEAN Strategy Editor, Monaco Code Editor, and AI Strategy Agent:
+  - **Strategy Editor Page** (`/editor`): Full VS Code-like Python editor using Monaco with LEAN-specific autocomplete, syntax highlighting, and keyboard shortcuts
+  - **AI Strategy Agent**: OpenAI-powered agent that generates complete runnable LEAN Python strategies from natural language descriptions, with refine/explain/optimize modes
+  - **8 Strategy Templates**: Pre-built templates for MA Crossover, RSI Mean Reversion, Bollinger Bands, MACD Momentum, Multi-Asset Rotation, Pairs Trading, Crypto Momentum, Volatility Breakout
+  - **LEAN Backtest Engine**: Simulated backtest execution with real-time streaming logs via Socket.IO, equity curve visualization, and full metrics (Sharpe, Drawdown, Win Rate)
+  - **Project Management**: Create, save, load, and delete LEAN projects with persistent in-memory storage
+  - **New Routes**: `/api/lean/projects`, `/api/lean/agent/generate`, `/api/lean/agent/refine`, `/api/lean/agent/explain`, `/api/lean/agent/optimize`
+  - **New Sidebar Entry**: "Editor" navigation item added between Strategies and Backtesting
+
 - **February 3, 2026**: Completed TradeWithAI feature integration:
   - **Multi-LLM Integration**: Added support for OpenAI GPT-5, Anthropic Claude (Sonnet/Opus/Haiku 4.5), and Google Gemini Pro
   - **WebSocket Real-Time Communication**: Socket.IO-based real-time updates for signals, trades, and risk alerts

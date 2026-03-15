@@ -230,6 +230,54 @@ export type InsertBacktest = z.infer<typeof insertBacktestSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 
+export const leanProjectSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  code: z.string(),
+  description: z.string().optional(),
+  generatedBy: z.string().optional(),
+  lastBacktestId: z.string().optional(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+export const insertLeanProjectSchema = leanProjectSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type LeanProject = z.infer<typeof leanProjectSchema>;
+export type InsertLeanProject = z.infer<typeof insertLeanProjectSchema>;
+
+export const equityCurvePointSchema = z.object({
+  date: z.string(),
+  value: z.number(),
+});
+
+export const leanBacktestSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  status: z.enum(["pending", "running", "completed", "failed"]),
+  totalReturn: z.number(),
+  sharpeRatio: z.number(),
+  maxDrawdown: z.number(),
+  winRate: z.number(),
+  totalTrades: z.number(),
+  equityCurve: z.array(equityCurvePointSchema),
+  rawResults: z.record(z.unknown()),
+  errorLog: z.string().nullable().optional(),
+  runAt: z.date(),
+});
+
+export const insertLeanBacktestSchema = leanBacktestSchema.omit({
+  id: true,
+  runAt: true,
+});
+
+export type LeanBacktest = z.infer<typeof leanBacktestSchema>;
+export type InsertLeanBacktest = z.infer<typeof insertLeanBacktestSchema>;
+
 export const orderBookEntrySchema = z.object({
   price: z.number(),
   quantity: z.number(),

@@ -17,7 +17,11 @@ import {
   InsertSettings,
   settingsTable,
   SettingsDb,
-  InsertSettingsDb
+  InsertSettingsDb,
+  LeanProject,
+  InsertLeanProject,
+  LeanBacktest,
+  InsertLeanBacktest,
 } from "@shared/schema";
 import { getDb } from "./db";
 
@@ -47,6 +51,17 @@ export interface IStorage {
 
   getSettings(): Promise<Settings>;
   updateSettings(data: InsertSettings): Promise<Settings>;
+
+  getLeanProjects(): Promise<LeanProject[]>;
+  getLeanProjectByName(name: string): Promise<LeanProject | null>;
+  createLeanProject(data: InsertLeanProject): Promise<LeanProject>;
+  updateLeanProjectCode(name: string, code: string): Promise<LeanProject>;
+  updateLeanProjectLastBacktest(name: string, backtestId: string): Promise<void>;
+  deleteLeanProject(name: string): Promise<void>;
+
+  createLeanBacktest(data: InsertLeanBacktest): Promise<LeanBacktest>;
+  updateLeanBacktest(id: string, data: Partial<InsertLeanBacktest>): Promise<LeanBacktest>;
+  getLeanBacktestsByProject(projectId: string): Promise<LeanBacktest[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -58,6 +73,8 @@ export class MemStorage implements IStorage {
   private portfolioMetrics: PortfolioMetrics;
   private chatMessages: ChatMessage[];
   private memSettings: Settings;
+  private leanProjects: Map<string, LeanProject>;
+  private leanBacktests: Map<string, LeanBacktest>;
 
   constructor() {
     this.strategies = new Map();
@@ -66,6 +83,8 @@ export class MemStorage implements IStorage {
     this.backtestResults = new Map();
     this.performanceData = [];
     this.chatMessages = [];
+    this.leanProjects = new Map();
+    this.leanBacktests = new Map();
     this.memSettings = {
       id: "default",
       refreshInterval: "30s",
@@ -575,6 +594,82 @@ export class MemStorage implements IStorage {
       systemAlerts: dbSettings.systemAlerts,
       email: dbSettings.email ?? "",
     };
+  }
+
+  async getLeanProjects(): Promise<LeanProject[]> {
+    return Array.from(this.leanProjects.values()).sort(
+      (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
+    );
+  }
+
+  async getLeanProjectByName(name: string): Promise<LeanProject | null> {
+    return this.leanProjects.get(name) ?? null;
+  }
+
+  async createLeanProject(data: InsertLeanProject): Promise<LeanProject> {
+    const now = new Date();
+    const project: LeanProject = {
+      id: randomUUID(),
+      ...data,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.leanProjects.set(project.name, project);
+    return project;
+  }
+
+  async updateLeanProjectCode(name: string, code: string): Promise<LeanProject> {
+    const existing = this.leanProjects.get(name);
+    if (!existing) {
+      throw new Error("Project not found");
+    }
+    const updated: LeanProject = { ...existing, code, updatedAt: new Date() };
+    this.leanProjects.set(name, updated);
+    return updated;
+  }
+
+  async updateLeanProjectLastBacktest(name: string, backtestId: string): Promise<void> {
+    const existing = this.leanProjects.get(name);
+    if (existing) {
+      this.leanProjects.set(name, {
+        ...existing,
+        lastBacktestId: backtestId,
+        updatedAt: new Date(),
+      });
+    }
+  }
+
+  async deleteLeanProject(name: string): Promise<void> {
+    if (!this.leanProjects.has(name)) {
+      throw new Error("Project not found");
+    }
+    this.leanProjects.delete(name);
+  }
+
+  async createLeanBacktest(data: InsertLeanBacktest): Promise<LeanBacktest> {
+    const backtest: LeanBacktest = {
+      id: randomUUID(),
+      ...data,
+      runAt: new Date(),
+    };
+    this.leanBacktests.set(backtest.id, backtest);
+    return backtest;
+  }
+
+  async updateLeanBacktest(id: string, data: Partial<InsertLeanBacktest>): Promise<LeanBacktest> {
+    const existing = this.leanBacktests.get(id);
+    if (!existing) {
+      throw new Error("Backtest not found");
+    }
+    const updated: LeanBacktest = { ...existing, ...data };
+    this.leanBacktests.set(id, updated);
+    return updated;
+  }
+
+  async getLeanBacktestsByProject(projectId: string): Promise<LeanBacktest[]> {
+    return Array.from(this.leanBacktests.values())
+      .filter((b) => b.projectId === projectId)
+      .sort((a, b) => b.runAt.getTime() - a.runAt.getTime());
   }
 }
 

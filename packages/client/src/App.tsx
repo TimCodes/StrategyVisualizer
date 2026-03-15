@@ -13,6 +13,7 @@ import Markets from "@/pages/Markets";
 import Chat from "@/pages/Chat";
 import Arena from "@/pages/Arena";
 import Settings from "@/pages/Settings";
+import EditorPage from "@/pages/Editor";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -20,6 +21,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Overview} />
       <Route path="/strategies" component={Strategies} />
+      <Route path="/editor" component={EditorPage} />
       <Route path="/backtesting" component={Backtesting} />
       <Route path="/portfolio" component={Portfolio} />
       <Route path="/markets" component={Markets} />
