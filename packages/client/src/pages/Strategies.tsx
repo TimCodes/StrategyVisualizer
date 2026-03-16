@@ -41,25 +41,6 @@ export default function Strategies() {
     queryFn: TradingService.getStrategies,
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data: InsertStrategy) => TradingService.createStrategy(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["strategies"] });
-      setDialogOpen(false);
-      toast({
-        title: "Strategy Created",
-        description: "Your new strategy has been created successfully.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to create strategy. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<InsertStrategy> }) =>
       TradingService.updateStrategy(id, data),
@@ -129,8 +110,6 @@ export default function Strategies() {
   const handleFormSubmit = async (data: InsertStrategy) => {
     if (editingStrategy) {
       await updateMutation.mutateAsync({ id: editingStrategy.id, data });
-    } else {
-      await createMutation.mutateAsync(data);
     }
   };
 
@@ -339,20 +318,16 @@ export default function Strategies() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="bg-surface border-border sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle className="text-text-primary">
-              {editingStrategy ? "Edit Strategy" : "Create New Strategy"}
-            </DialogTitle>
+            <DialogTitle className="text-text-primary">Edit Strategy</DialogTitle>
             <DialogDescription className="text-text-secondary">
-              {editingStrategy
-                ? "Update your strategy settings below."
-                : "Configure your new trading strategy."}
+              Update your strategy settings below.
             </DialogDescription>
           </DialogHeader>
           <StrategyForm
             strategy={editingStrategy ?? undefined}
             onSubmit={handleFormSubmit}
             onCancel={handleDialogClose}
-            isPending={createMutation.isPending || updateMutation.isPending}
+            isPending={updateMutation.isPending}
           />
         </DialogContent>
       </Dialog>
