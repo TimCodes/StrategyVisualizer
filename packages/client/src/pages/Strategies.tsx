@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import Header from "@/components/layout/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import { Strategy, InsertStrategy } from "@shared/schema";
 
 export default function Strategies() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStrategy, setEditingStrategy] = useState<Strategy | null>(null);
   const [deletingStrategy, setDeletingStrategy] = useState<Strategy | null>(null);
@@ -138,8 +140,7 @@ export default function Strategies() {
   };
 
   const handleCreate = () => {
-    setEditingStrategy(null);
-    setDialogOpen(true);
+    navigate("/editor");
   };
 
   const handleDialogClose = () => {
