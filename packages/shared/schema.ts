@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pgTable, text, boolean, integer, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, integer, varchar, timestamp, jsonb, real, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export const settingsTable = pgTable("settings", {
@@ -277,6 +277,32 @@ export const insertLeanBacktestSchema = leanBacktestSchema.omit({
 
 export type LeanBacktest = z.infer<typeof leanBacktestSchema>;
 export type InsertLeanBacktest = z.infer<typeof insertLeanBacktestSchema>;
+
+export const leanProjectsTable = pgTable("lean_projects", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  code: text("code").notNull(),
+  description: text("description"),
+  generatedBy: text("generated_by"),
+  lastBacktestId: text("last_backtest_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const leanBacktestsTable = pgTable("lean_backtests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: text("project_id").notNull(),
+  status: text("status").notNull(),
+  totalReturn: real("total_return").notNull().default(0),
+  sharpeRatio: real("sharpe_ratio").notNull().default(0),
+  maxDrawdown: real("max_drawdown").notNull().default(0),
+  winRate: real("win_rate").notNull().default(0),
+  totalTrades: integer("total_trades").notNull().default(0),
+  equityCurve: jsonb("equity_curve").notNull().default([]),
+  rawResults: jsonb("raw_results").notNull().default({}),
+  errorLog: text("error_log"),
+  runAt: timestamp("run_at").notNull().defaultNow(),
+});
 
 export const orderBookEntrySchema = z.object({
   price: z.number(),
