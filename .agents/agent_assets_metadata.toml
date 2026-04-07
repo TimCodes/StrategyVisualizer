@@ -6,3 +6,9 @@ id = "hBZfC29yqp7ssk34qiosK"
 uri = "file://APPLICATION_ANALYSIS.md"
 type = "text"
 title = "Praxis — Application Analysis"
+
+[[outputs]]
+id = "DBbBXKcM83IVMMDUEbuhM"
+uri = "file://ARCHITECTURE.md"
+type = "text"
+title = "Architecture Overview"
