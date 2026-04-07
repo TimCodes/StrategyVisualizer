@@ -199,7 +199,7 @@ export type PortfolioMetrics = z.infer<typeof portfolioMetricsSchema>;
 export type PerformanceData = z.infer<typeof performanceDataSchema>;
 export type DateRange = z.infer<typeof dateRangeSchema>;
 
-export const exchangeSchema = z.enum(["binance", "coinbase", "kraken", "alpaca", "coingecko"]);
+export const exchangeSchema = z.enum(["binance", "coinbase", "kraken", "alpaca", "coingecko", "ibkr"]);
 export type Exchange = z.infer<typeof exchangeSchema>;
 
 export const settingsSchema = z.object({

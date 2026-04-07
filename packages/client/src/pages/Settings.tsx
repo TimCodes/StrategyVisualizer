@@ -6,17 +6,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Settings as SettingsType } from "@shared/schema";
 import { useState, useEffect } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 
 export default function Settings() {
   const { toast } = useToast();
   
   const { data: settings, isLoading } = useQuery<SettingsType>({
     queryKey: ["/api/settings"],
+  });
+
+  const { data: ibkrStatus } = useQuery<{
+    configured: boolean;
+    authenticated: boolean;
+    message?: string;
+  }>({
+    queryKey: ["/api/ibkr/status"],
+    refetchInterval: 30000,
   });
 
   const [formState, setFormState] = useState<Partial<SettingsType>>({});
@@ -218,6 +228,7 @@ export default function Settings() {
                   <SelectContent className="bg-surface border-border">
                     <SelectItem value="coingecko">CoinGecko (Free API)</SelectItem>
                     <SelectItem value="kraken">Kraken</SelectItem>
+                    <SelectItem value="ibkr">Interactive Brokers</SelectItem>
                     <SelectItem value="binance">Binance</SelectItem>
                     <SelectItem value="coinbase">Coinbase Pro</SelectItem>
                     <SelectItem value="alpaca">Alpaca</SelectItem>
@@ -226,6 +237,7 @@ export default function Settings() {
                 <p className="text-xs text-text-secondary mt-1">
                   {formState.exchange === "kraken" && "Live market data from Kraken exchange. API keys optional for market data."}
                   {formState.exchange === "coingecko" && "Free aggregated market data from CoinGecko."}
+                  {formState.exchange === "ibkr" && "Interactive Brokers — stocks, ETFs, options, and futures via Client Portal API."}
                   {formState.exchange === "binance" && "Binance exchange (coming soon)"}
                   {formState.exchange === "coinbase" && "Coinbase Pro exchange (coming soon)"}
                   {formState.exchange === "alpaca" && "Alpaca for stocks and crypto (coming soon)"}
@@ -233,8 +245,51 @@ export default function Settings() {
                 </p>
               </div>
 
+              {formState.exchange === "ibkr" && (
+                <div className="rounded-md border border-border p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-text-primary">IBKR Connection Status</span>
+                    {ibkrStatus?.configured ? (
+                      ibkrStatus.authenticated ? (
+                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Connected
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" /> Session Expired
+                        </Badge>
+                      )
+                    ) : (
+                      <Badge className="bg-red-500/20 text-red-400 border-red-500/30 flex items-center gap-1">
+                        <XCircle className="w-3 h-3" /> Not Configured
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="space-y-1 text-xs text-text-secondary">
+                    <p className="font-medium text-text-primary text-sm">Required environment secrets:</p>
+                    <div className="font-mono bg-background rounded px-2 py-1 space-y-1">
+                      <p>IBKR_ACCESS_TOKEN — OAuth2 Bearer token from IBKR</p>
+                      <p>IBKR_ACCOUNT_ID — Your IBKR account number</p>
+                    </div>
+                    <p className="pt-1">
+                      Obtain your access token via the{" "}
+                      <a
+                        href="https://www.interactivebrokers.com/en/trading/ib-api.php"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline underline-offset-2"
+                      >
+                        IBKR Client Portal API
+                      </a>
+                      . Add them as secrets in your Replit environment.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <p className="text-sm text-text-secondary">
-                For trading features, add API credentials as environment variables (KRAKEN_API_KEY, KRAKEN_API_SECRET).
+                For Kraken trading, add KRAKEN_API_KEY and KRAKEN_API_SECRET. For IBKR, add IBKR_ACCESS_TOKEN and IBKR_ACCOUNT_ID.
               </p>
             </CardContent>
           </Card>
