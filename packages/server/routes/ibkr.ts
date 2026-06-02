@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { getIBKRService, IBKRService } from "../services/exchanges/ibkr";
-import { isLiveTradingEnabled, LIVE_TRADING_BLOCKED_MSG } from "../lib/liveTrading";
+import { isLiveTradingEnabled, LiveTradingDisabledError } from "../lib/liveTrading";
 
 function getCredentials(): { accessToken: string; accountId: string } | null {
   const accessToken = process.env.IBKR_ACCESS_TOKEN;
@@ -137,8 +137,11 @@ export function registerIBKRRoutes(app: Express) {
   app.post("/api/ibkr/order", async (req: Request, res: Response) => {
     try {
       if (!isLiveTradingEnabled()) {
-        console.warn("[IBKR] Order placement blocked: LIVE_TRADING_ENABLED is not set.");
-        return res.status(403).json({ error: LIVE_TRADING_BLOCKED_MSG });
+        console.warn("[IBKR] Order placement blocked: LIVE_TRADING_ENABLED is not \"true\".");
+        return res.status(403).json({
+          error: "Live trading is disabled. Backtests are simulated; live orders are blocked.",
+          liveTradingEnabled: false,
+        });
       }
       if (!requireCredentials(res)) return;
       const { symbol, action, orderType, quantity, price, tif } = req.body;
@@ -161,6 +164,12 @@ export function registerIBKRRoutes(app: Express) {
       const result = await ibkr.placeOrder({ symbol, action, orderType, quantity, price, tif });
       res.json(result);
     } catch (error) {
+      if (error instanceof LiveTradingDisabledError) {
+        return res.status(403).json({
+          error: error.message,
+          liveTradingEnabled: false,
+        });
+      }
       console.error("IBKR place order error:", error);
       res.status(500).json({ error: "Failed to place IBKR order", details: String(error) });
     }

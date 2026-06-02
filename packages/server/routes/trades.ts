@@ -3,7 +3,6 @@ import { storage } from "../storage";
 import { insertTradeSchema } from "@shared/schema";
 import { riskService } from "../services/risk";
 import { eventBus } from "../ws";
-import { isLiveTradingEnabled, LIVE_TRADING_BLOCKED_MSG } from "../lib/liveTrading";
 
 export function registerTradeRoutes(app: Express) {
   app.get("/api/trades", async (_req: Request, res: Response) => {
@@ -17,10 +16,6 @@ export function registerTradeRoutes(app: Express) {
 
   app.post("/api/trades", async (req: Request, res: Response) => {
     try {
-      if (!isLiveTradingEnabled()) {
-        console.warn("[Trades] Order placement blocked: LIVE_TRADING_ENABLED is not set.");
-        return res.status(403).json({ error: LIVE_TRADING_BLOCKED_MSG });
-      }
       const { bypassRiskCheck, ...tradeData } = req.body;
       
       const parsed = insertTradeSchema.safeParse(tradeData);

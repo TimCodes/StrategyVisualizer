@@ -43,14 +43,19 @@ Preferred communication style: Simple, everyday language. Direct and focused res
 - When a real backtest engine replaces the simulator, set `dataSource: "live_engine"` at that time — the "Simulated" badges in the UI will disappear automatically for those results.
 
 ### Live Trading Guard
-- **`packages/server/lib/liveTrading.ts`** is the single source of truth: `isLiveTradingEnabled()` returns `true` only when env var `LIVE_TRADING_ENABLED=true` or `=1`.
-- **Default is `false` (unset = blocked).** This env var must not be set to `true` until a real backtest engine replaces the simulator.
-- Every real broker order placement is guarded before the exchange call:
-  - `POST /api/ibkr/order` — calls `ibkr.placeOrder()` (IBKR)
-  - `POST /api/kraken/order` — calls `kraken.placeOrder()` via `AddOrder` (Kraken)
-  - `POST /api/trades` — calls `storage.createTrade()` (internal trades)
-  - All return HTTP 403 with `{ error: "Live trading is disabled. Backtests are simulated; live orders are blocked." }` when blocked.
-- Read-only connector operations (balance, positions, market data, order book) are NOT affected.
+- **`packages/server/lib/liveTrading.ts`** is the single source of truth.
+  - `isLiveTradingEnabled()` returns `true` ONLY when `LIVE_TRADING_ENABLED` is exactly the string `"true"`. Anything else (unset, `"false"`, `"1"`, `"yes"`) returns `false` — **fail-closed by design**.
+  - `LiveTradingDisabledError extends Error` carries the canonical message used at both layers.
+- **Default is `false` (unset = blocked).** Do NOT set to `"true"` until a real backtest engine replaces the random-number simulator.
+- **Defense in depth — two independent guard layers:**
+  - **Service layer (primary safety net):** `ibkr.placeOrder()` and `kraken.placeOrder()` each call `isLiveTradingEnabled()` at the very top, before any network request. They `throw new LiveTradingDisabledError()` and log a warning including connector name, symbol/pair, and side. This means any future route that calls `placeOrder` directly is still blocked.
+  - **Route layer (clean HTTP surface):** `POST /api/ibkr/order` and `POST /api/kraken/order` check `isLiveTradingEnabled()` before calling the service and return `HTTP 403 { error: "...", liveTradingEnabled: false }`. A `catch` block additionally converts a `LiveTradingDisabledError` thrown from the service into the same 403 rather than a 500.
+- **Scope is exactly order placement only:**
+  - `POST /api/ibkr/order` → `ibkr.placeOrder()` — **blocked**
+  - `POST /api/kraken/order` → `kraken.placeOrder()` via `AddOrder` — **blocked**
+  - `POST /api/trades` (records a trade in storage, does NOT call any broker) — **not affected**
+  - `getOrders`, `getOpenOrders`, `cancelOrder`, `getBalance`, `getPositions`, market data — **not affected**
+- **No other callers exist.** A full search of `packages/server` for `.placeOrder(` found exactly these two call sites (routes/ibkr.ts and routes/kraken.ts) — no others.
 
 ### System Status Endpoint
 - `GET /api/system/status` returns `{ liveTradingEnabled: boolean, backtestEngine: "simulated" }`.

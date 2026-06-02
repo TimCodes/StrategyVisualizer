@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { getKrakenService } from "../services/exchanges/kraken";
-import { isLiveTradingEnabled, LIVE_TRADING_BLOCKED_MSG } from "../lib/liveTrading";
+import { isLiveTradingEnabled, LiveTradingDisabledError } from "../lib/liveTrading";
 
 export function registerKrakenRoutes(app: Express) {
   app.get("/api/kraken/ticker", async (req: Request, res: Response) => {
@@ -109,8 +109,11 @@ export function registerKrakenRoutes(app: Express) {
   app.post("/api/kraken/order", async (req: Request, res: Response) => {
     try {
       if (!isLiveTradingEnabled()) {
-        console.warn("[Kraken] Order placement blocked: LIVE_TRADING_ENABLED is not set.");
-        return res.status(403).json({ error: LIVE_TRADING_BLOCKED_MSG });
+        console.warn("[Kraken] Order placement blocked: LIVE_TRADING_ENABLED is not \"true\".");
+        return res.status(403).json({
+          error: "Live trading is disabled. Backtests are simulated; live orders are blocked.",
+          liveTradingEnabled: false,
+        });
       }
       const apiKey = process.env.KRAKEN_API_KEY;
       const apiSecret = process.env.KRAKEN_API_SECRET;
@@ -132,6 +135,12 @@ export function registerKrakenRoutes(app: Express) {
       const result = await kraken.placeOrder({ pair, type, ordertype, volume, price });
       res.json(result);
     } catch (error) {
+      if (error instanceof LiveTradingDisabledError) {
+        return res.status(403).json({
+          error: error.message,
+          liveTradingEnabled: false,
+        });
+      }
       console.error("Kraken order error:", error);
       res.status(500).json({ error: "Failed to place Kraken order" });
     }

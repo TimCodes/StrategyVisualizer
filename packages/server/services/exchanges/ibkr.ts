@@ -1,3 +1,5 @@
+import { isLiveTradingEnabled, LiveTradingDisabledError } from "../../lib/liveTrading";
+
 const IBKR_BASE_URL = process.env.IBKR_BASE_URL || "https://api.ibkr.com/v1/api";
 
 const CONID_CACHE: Record<string, number> = {
@@ -295,6 +297,12 @@ export class IBKRService {
     price?: number;
     tif?: "DAY" | "GTC";
   }): Promise<any> {
+    if (!isLiveTradingEnabled()) {
+      console.warn(
+        `[IBKR] placeOrder blocked (LIVE_TRADING_ENABLED != "true"): symbol=${params.symbol} side=${params.action}`
+      );
+      throw new LiveTradingDisabledError();
+    }
     const conid = await this.searchContract(params.symbol);
     const order: Record<string, any> = {
       conid,

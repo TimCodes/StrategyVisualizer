@@ -1,0 +1,69 @@
+GOAL
+Add a server-side hard guard so that NO real broker order can be placed while the app
+is in simulated mode. Backtests in this app are randomly generated; the guard ensures a
+simulated result can never reach a live broker. This is the safety item — do ONLY this.
+Do not build a real backtest engine, add pipeline gates, or touch unrelated code.
+
+CONFIRMED LIVE-ORDER SURFACE (verified in the codebase)
+There are exactly two order-PLACEMENT chokepoints and two route entry points:
+- Service methods (the real chokepoints):
+  - packages/server/services/exchanges/ibkr.ts  -> async placeOrder(params) (~line 290)
+  - packages/server/services/exchanges/kraken.ts -> async placeOrder(params) (~line 310)
+- Routes that call them:
+  - packages/server/routes/ibkr.ts   -> POST /api/ibkr/order   (calls ibkr.placeOrder, ~line 156)
+  - packages/server/routes/kraken.ts  -> POST /api/kraken/order (calls kraken.placeOrder, ~line 127)
+Notes:
+- POST /api/trades (routes/trades.ts) only records a trade in storage and runs risk
+  validation; it does NOT call any broker placeOrder. Leave it alone for this task.
+- getOrders / getOpenOrders / cancelOrder and all balance/position/market-data reads are
+  read-only or risk-reducing. Do NOT block them. Block only order PLACEMENT.
+
+TASK 1 — Single source of truth
+- Create packages/server/lib/liveTrading.ts exporting:
+  - isLiveTradingEnabled(): boolean  -> returns true ONLY if process.env.LIVE_TRADING_ENABLED
+    is exactly the string "true". Anything else (unset, "false", "1", "yes") = false.
+  - a custom error class LiveTradingDisabledError extends Error with a clear message:
+    "Live trading is disabled. Backtests are simulated; live orders are blocked."
+- Default behavior must be FAIL-CLOSED: missing/invalid env => disabled.
+
+TASK 2 — Guard the service chokepoints (defense in depth)
+- At the very top of ibkr.placeOrder(...) and kraken.placeOrder(...), before any network
+  request, call isLiveTradingEnabled(). If false, throw new LiveTradingDisabledError() and
+  console.warn a line including the connector name and the attempted symbol/pair + side.
+- This is the primary safety net: even if a new route is added later that calls placeOrder,
+  it still fails closed. Do not change the connectors' read-only methods.
+
+TASK 3 — Guard the routes (clean 403)
+- In POST /api/ibkr/order and POST /api/kraken/order, immediately after request validation
+  and BEFORE calling placeOrder, check isLiveTradingEnabled(). If false, return:
+    res.status(403).json({
+      error: "Live trading is disabled. Backtests are simulated; live orders are blocked.",
+      liveTradingEnabled: false
+    })
+- Also wrap the placeOrder call so that a thrown LiveTradingDisabledError (from the service
+  guard) is caught and returned as the same 403 rather than a generic 500.
+
+TASK 4 — Confirm no other callers
+- Search the whole server package for other callers of .placeOrder( (or any direct order
+  POSTs to broker APIs). If any exist outside the two routes above, report them to me and
+  guard them the same way. Do not guess — list what you find.
+
+TASK 5 — Env + docs
+- Add LIVE_TRADING_ENABLED to .env.example (or the env template) set to "false" with a
+  comment that flipping it to "true" must NOT be done until a real backtest engine replaces
+  the simulator.
+- Update replit.md to note: live broker orders are blocked behind LIVE_TRADING_ENABLED
+  (default false), guarded at both the connector service layer and the route layer.
+
+ACCEPTANCE CRITERIA
+- With LIVE_TRADING_ENABLED unset or "false":
+  - POST /api/ibkr/order and POST /api/kraken/order return 403 and place nothing.
+  - ibkr.placeOrder / kraken.placeOrder throw LiveTradingDisabledError if called directly.
+  - getOrders, getOpenOrders, cancelOrder, balances, positions, and market data still work.
+  - POST /api/trades still works as before (recorded trade, unchanged).
+- With LIVE_TRADING_ENABLED="true": order placement proceeds as it did originally (no
+  behavior change beyond the gate).
+- App still builds and runs.
+
+Show me: the contents of liveTrading.ts, the exact lines you added to each placeOrder method
+and each route, and the results of the Task 4 search for other callers.

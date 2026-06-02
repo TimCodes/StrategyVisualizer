@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { isLiveTradingEnabled, LiveTradingDisabledError } from "../../lib/liveTrading";
 
 const KRAKEN_API_URL = "https://api.kraken.com";
 
@@ -314,6 +315,12 @@ export class KrakenService {
     volume: string;
     price?: string;
   }): Promise<any> {
+    if (!isLiveTradingEnabled()) {
+      console.warn(
+        `[Kraken] placeOrder blocked (LIVE_TRADING_ENABLED != "true"): pair=${params.pair} side=${params.type}`
+      );
+      throw new LiveTradingDisabledError();
+    }
     return this.privateRequest("AddOrder", params);
   }
 
