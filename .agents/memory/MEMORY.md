@@ -1,0 +1,3 @@
+- [Gate pipeline safety constraint](gate-pipeline-safety.md) — no gate ever passes on simulated data; assertEvaluable() is the single chokepoint.
+- [DSR formula source](dsr-formula.md) — Bailey & Lopez de Prado 2014 Deflated Sharpe Ratio implementation details and edge cases.
+- [Storage try/catch pattern](storage-pattern.md) — all storage methods do in-memory first, then try DB in catch block (Neon WebSocket throws on cold connections).

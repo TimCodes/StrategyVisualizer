@@ -122,6 +122,53 @@ The refine flow now **requires a type and rationale** and **gates optimizations*
 - **Refinement logging**: on a successful refine, if `strategyId` is provided, `storage.appendRefinementLog(strategyId, { refinementType, rationale, at })` appends to `strategy.refinementHistory` — an append-only log of every change and why. The trial counter also fires.
 - **UI** (`StrategyAgent.tsx`): two-card type selector (Logic Fix / Optimization with warning icon) + required rationale textarea. `confirm_optimization` response triggers a blocking warning panel showing trial count; user must click **"I understand — optimize"** (orange, non-default) to proceed.
 
+## Pipeline Gate Statistics (Overfitting Protection)
+
+### Guard rule — hard constraint
+**No gate can return `"pass"` on simulated data.** `assertEvaluable()` in `packages/server/services/gates.ts` checks `backtest.dataSource === "live_engine"` and short-circuits with `cannot_evaluate` for any other value. This block fires before any computation.
+
+### Gate result store
+- `gate_results` pgTable (in-memory fallback): `id`, `strategyId`, `gate`, `verdict` (`"pass"|"fail"|"cannot_evaluate"`), `metrics` (jsonb), `dataSource`, `reason`, `computedAt`.
+- Storage methods: `recordGateResult()`, `getGateResults(strategyId)`.
+- `GET /api/strategies/:id/gate-results` — list results, most recent first.
+
+### A1 — Monte Carlo bootstrap
+- `computeMonteCarlo(backtest, config?)` in `packages/server/services/gates.ts`.
+- Builds period returns from `equityCurve`, bootstraps 2500 iterations (seeded mulberry32 PRNG for reproducibility).
+- Per iteration: resample with replacement → equity path → total return + max drawdown.
+- **PASS**: `median(ret/DD) > 2.0` AND `riskOfRuin < 0.05`.
+- `POST /api/strategies/:id/gates/monte-carlo` — body: `{ backtest: {..., dataSource} }` or `{ backtestId }`.
+
+### A2 — Deflated Sharpe Ratio (DSR)
+- Formula: Bailey & Lopez de Prado 2014. `computeDeflatedSharpe(backtest, strategyId)` in `gates.ts`.
+- σ_SR = sqrt[(1 - γ₃·SR + (γ₄-1)/4·SR²) / (T-1)]; E[max_N] = Euler-Mascheroni approx; DSR = Φ[(SR-SR*)/σ_SR].
+- N = per-strategy trial count (from `getTrialCount(strategyId)`). Higher N → lower DSR. Returned alongside MC result as an informational metric (DSR itself does not gate pass/fail today).
+- DSR is only meaningful on live data; shows `notValid: true` for simulated.
+
+### B1 — Walk-Forward (scaffold)
+- `computeWalkForward()` / `POST /api/strategies/:id/gates/walk-forward` — always returns `cannot_evaluate`.
+- Walk-forward config stored on strategy via `POST /api/strategies/:id/gates/walk-forward/config` (appends to gateHistory).
+- Schema fields added to strategy: `walkForwardConfig: { inSampleDays, outOfSampleDays, anchored, numWindows, lockedAt }`.
+
+### B2 — PBO (scaffold)
+- `pboCannotEvaluate()` / `POST /api/strategies/:id/gates/pbo` — always returns `cannot_evaluate`.
+- Full CSCV PBO algorithm is implemented in `packages/server/services/pbo.ts` (`computePBO(matrix)`) for unit testing.
+
+### Incubation gate
+- Start: `POST /api/strategies/:id/gates/incubation/start` body `{ requiredDays }` (default 90).
+- Log observation: `POST /api/strategies/:id/gates/incubation/observation` body `{ date, observedReturn, observedDrawdown, note? }`.
+- Evaluate: `POST /api/strategies/:id/gates/incubation/evaluate` — returns `cannot_evaluate` until period is complete AND live data is attached.
+- Strategy fields: `incubationStartedAt`, `requiredDays`, `incubationObservations[]`.
+
+### Unit tests
+- `packages/server/services/__tests__/gates.test.ts` — 21 tests covering: `assertEvaluable`, `buildReturns`, Monte Carlo (simulated guard, too-short curve, positive trend, losing curve), DSR direction check, PBO (invalid dimensions, odd S, dominant strategy, uniform strategies, adversarial IS/OOS, random matrix), WFE.
+- Run: `npx vitest run packages/server/services/__tests__/gates.test.ts`
+
+### UI
+- `packages/client/src/components/strategies/GatePipelinePanel.tsx` — collapsible panel on each strategy card.
+- Shows: Monte Carlo verdict + DSR bar + ret/DD / risk-of-ruin / drawdown metrics, Walk-Forward scaffold with config form, Incubation countdown timer + observation log + evaluate button.
+- Hard warning banner: "No gate can return a pass on simulated data."
+
 ## Recent Changes
 
 - **March 15, 2026**: Added three major new features — LEAN Strategy Editor, Monaco Code Editor, and AI Strategy Agent:

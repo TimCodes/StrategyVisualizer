@@ -34,6 +34,7 @@ import { TradingService } from "@/services/tradingServices";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import StrategyForm from "@/components/strategies/StrategyForm";
+import GatePipelinePanel from "@/components/strategies/GatePipelinePanel";
 import { Strategy, InsertStrategy, PipelineStage, GateStatus } from "@shared/schema";
 
 const STAGE_LABELS: Record<PipelineStage, string> = {
@@ -405,6 +406,10 @@ export default function Strategies() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+
+                    <div className="border-t border-border pt-3">
+                      <GatePipelinePanel strategyId={strategy.id} />
+                    </div>
                   </div>
                 </CardContent>
               </Card>

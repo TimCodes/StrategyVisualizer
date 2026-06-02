@@ -11,6 +11,7 @@ import { registerSettingsRoutes } from "./routes/settings";
 import { registerKrakenRoutes } from "./routes/kraken";
 import { registerIBKRRoutes } from "./routes/ibkr";
 import { registerLeanRoutes } from "./routes/lean";
+import { registerGateRoutes } from "./routes/gates";
 import { initializeWebSocket } from "./ws";
 import { isLiveTradingEnabled } from "./lib/liveTrading";
 
@@ -26,6 +27,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerKrakenRoutes(app);
   registerIBKRRoutes(app);
   registerLeanRoutes(app);
+  registerGateRoutes(app);
 
   app.get("/api/system/status", (_req: Request, res: Response) => {
     res.json({
