@@ -16,6 +16,10 @@ function hydrateStrategy(data: any): Strategy {
   return {
     ...data,
     createdAt: new Date(data.createdAt),
+    gateHistory: (data.gateHistory ?? []).map((e: any) => ({
+      ...e,
+      at: new Date(e.at),
+    })),
   };
 }
 
@@ -105,6 +109,20 @@ export class TradingService {
       method: 'DELETE',
     });
     if (!res.ok) throw new Error('Failed to delete strategy');
+  }
+
+  static async recordGate(
+    id: string,
+    params: { result: "passed" | "failed" | "discarded"; note?: string }
+  ): Promise<Strategy> {
+    const res = await fetch(`/api/strategies/${id}/gate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) throw new Error('Failed to record gate transition');
+    const data = await res.json();
+    return hydrateStrategy(data);
   }
 
   static async getMarketData(): Promise<MarketData[]> {

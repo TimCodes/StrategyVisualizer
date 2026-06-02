@@ -1,0 +1,95 @@
+GOAL
+Give every strategy a place in the development pipeline and a pass/fail state, so a
+strategy is "somewhere in the process" rather than just existing as a flat record.
+Scope is the STATE MACHINE only: stage, gate status, an append-only gate history, and
+endpoints to record gate transitions. Do NOT build the actual gate tests (walk-forward,
+Monte Carlo, etc.) and do NOT add a trial counter — those are later steps.
+
+CONFIRMED PERSISTENCE (verified)
+- Strategies are stored IN-MEMORY in packages/server/storage.ts (MemStorage, a
+  Map<string, Strategy>). There is NO strategies Postgres table.
+- Therefore: NO Drizzle migration and NO `npm run db:push` for this task. Changes go in
+  packages/shared/schema.ts (Zod) and packages/server/storage.ts + routes/strategies.ts.
+- The strategy's existing `status` field (active|inactive|paused) is OPERATIONAL (is it
+  running). Do NOT overload it. The new pipeline stage is SEPARATE metadata.
+
+TASK 1 — Extend the shared schema (packages/shared/schema.ts)
+- Define and export an ordered stage list and helper:
+    export const PIPELINE_STAGES = [
+      "idea",                    // Trading idea + SMART goals
+      "feasibility",             // Limited feasibility testing
+      "walk_forward",            // Walk-forward testing + optimization
+      "monte_carlo",             // Monte Carlo simulation
+      "incubation",              // Incubation
+      "diversification_sizing",  // Diversification + position sizing
+      "live",                    // Live, real-money operation
+    ] as const;
+  Export a pipelineStageSchema = z.enum(PIPELINE_STAGES) and a nextStage(stage) helper
+  that returns the next stage or null if already "live".
+- Define gateStatusSchema = z.enum(["in_progress","passed","failed","discarded"]).
+- Define a gateHistoryEntrySchema:
+    { stage: pipelineStageSchema, result: z.enum(["passed","failed","discarded"]),
+      note: z.string().optional(), at: z.date() }
+- Add three fields to strategySchema:
+    stage: pipelineStageSchema.default("idea"),
+    gateStatus: gateStatusSchema.default("in_progress"),
+    gateHistory: z.array(gateHistoryEntrySchema).default([]),
+- insertStrategySchema must keep omitting id + createdAt, AND the three new fields must be
+  optional-with-defaults so existing creation paths (StrategyForm, the AI agent flow) keep
+  working unchanged: new strategies start at stage "idea", gateStatus "in_progress",
+  gateHistory [].
+
+TASK 2 — Storage layer (packages/server/storage.ts)
+- In createStrategy, default the three new fields if not provided (idea / in_progress / []).
+- updateStrategy already spreads {...existing, ...data} — keep that, but DO NOT let plain
+  updateStrategy mutate stage/gateStatus/gateHistory arbitrarily; gate transitions go
+  through the dedicated method below. (If simplest, strip those keys from generic update.)
+- Add a method recordGate(id, { result, note }):
+    1. Load the strategy (throw "Strategy not found" if missing, matching existing style).
+    2. Append { stage: current stage, result, note, at: new Date() } to gateHistory.
+    3. Apply transition rules:
+       - result "passed": if nextStage(current) is not null, set stage = nextStage and
+         gateStatus = "in_progress"; if current is "live", set gateStatus = "passed".
+       - result "failed": keep stage; set gateStatus = "failed".
+       - result "discarded": keep stage; set gateStatus = "discarded".
+    4. Save and return the updated strategy.
+- Give the existing SEED strategies sensible stage values so the UI shows variety: set any
+  seed with status "active" to stage "live" / gateStatus "passed" (with a single matching
+  gateHistory entry); set the rest to stage "idea" / gateStatus "in_progress" / [].
+
+TASK 3 — Route (packages/server/routes/strategies.ts)
+- Add POST /api/strategies/:id/gate
+    body: { result: "passed" | "failed" | "discarded", note?: string } (validate with zod)
+  Calls storage.recordGate(...) and returns the updated strategy. 404 if not found,
+  400 on invalid body, matching the existing error-handling style in this file.
+- Do not change existing strategy routes' behavior.
+
+TASK 4 — Minimal UI (keep it light)
+- In components/dashboard/StrategyList.tsx (and StrategyForm/detail if a detail view
+  exists), show for each strategy: a stage badge (human-readable label for the stage key)
+  and a gate-status indicator (in progress / passed / failed / discarded), color-coded:
+  in_progress neutral, passed green, failed amber/red, discarded gray.
+- Add a small control (button group or menu) with "Pass gate", "Fail gate", "Discard"
+  that POSTs to /api/strategies/:id/gate and refetches. After a pass, the badge should
+  advance to the next stage automatically. Keep styling consistent with existing components.
+- Do NOT tie this to live trading or order placement — stage is metadata only; the
+  LIVE_TRADING_ENABLED guard from the prior task is unaffected and stays as-is.
+
+TASK 5 — Docs
+- Update replit.md: strategies now carry a pipeline stage, a gate status, and an
+  append-only gate history; transitions happen via POST /api/strategies/:id/gate. Note
+  that strategies are still in-memory, so this state resets on server restart (persisting
+  strategies to Postgres is a separate future step).
+
+ACCEPTANCE CRITERIA
+- New strategies are created at stage "idea", gateStatus "in_progress", gateHistory [].
+- POST /api/strategies/:id/gate with "passed" advances exactly one stage and resets
+  gateStatus to "in_progress"; passing at "live" sets gateStatus "passed".
+- "failed" and "discarded" keep the stage and set the matching gateStatus; every
+  transition appends one entry to gateHistory with the stage it occurred at and a timestamp.
+- A strategy cannot skip stages (advance is one step at a time, server-enforced).
+- Existing strategy create/list/update/delete and all other pages still work; no db:push
+  was run for this task.
+
+Show me: the new schema fields, the recordGate method, the new route, and a screenshot or
+description of the stage/gate UI on the strategy list.

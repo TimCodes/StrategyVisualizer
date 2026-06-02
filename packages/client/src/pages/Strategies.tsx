@@ -22,12 +22,50 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Play, Pause, Settings, Trash2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Plus, Play, Pause, Settings, Trash2, ChevronDown, CheckCircle2, XCircle, Archive } from "lucide-react";
 import { TradingService } from "@/services/tradingServices";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import StrategyForm from "@/components/strategies/StrategyForm";
-import { Strategy, InsertStrategy } from "@shared/schema";
+import { Strategy, InsertStrategy, PipelineStage, GateStatus } from "@shared/schema";
+
+const STAGE_LABELS: Record<PipelineStage, string> = {
+  idea: "Idea",
+  feasibility: "Feasibility",
+  walk_forward: "Walk Forward",
+  monte_carlo: "Monte Carlo",
+  incubation: "Incubation",
+  diversification_sizing: "Div. & Sizing",
+  live: "Live",
+};
+
+function getStageBadgeClass(stage: PipelineStage): string {
+  if (stage === "live") return "bg-primary/20 text-primary border border-primary/30";
+  if (stage === "incubation" || stage === "diversification_sizing")
+    return "bg-blue-500/20 text-blue-400 border border-blue-500/30";
+  return "bg-border text-text-secondary border border-border";
+}
+
+function getGateStatusConfig(status: GateStatus) {
+  switch (status) {
+    case "passed":
+      return { label: "Passed", className: "bg-success/20 text-success border border-success/30" };
+    case "failed":
+      return { label: "Failed", className: "bg-danger/20 text-danger border border-danger/30" };
+    case "discarded":
+      return { label: "Discarded", className: "bg-border text-text-secondary border border-border opacity-60" };
+    case "in_progress":
+    default:
+      return { label: "In Progress", className: "bg-warning/10 text-warning border border-warning/30" };
+  }
+}
 
 export default function Strategies() {
   const { toast } = useToast();
@@ -104,6 +142,26 @@ export default function Strategies() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["strategies"] });
+    },
+  });
+
+  const gateMutation = useMutation({
+    mutationFn: ({ id, result, note }: { id: string; result: "passed" | "failed" | "discarded"; note?: string }) =>
+      TradingService.recordGate(id, { result, note }),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["strategies"] });
+      const label = STAGE_LABELS[updated.stage];
+      toast({
+        title: "Gate recorded",
+        description: `Strategy is now at stage: ${label}`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to record gate transition.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -196,109 +254,162 @@ export default function Strategies() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {(strategies || []).map((strategy, index) => (
-            <Card
-              key={strategy.id}
-              className="bg-surface border-border"
-              data-testid={`strategy-card-${index}`}
-            >
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="text-lg text-text-primary">
-                      {strategy.name}
-                    </CardTitle>
-                    <p className="text-text-secondary text-sm mt-1">
-                      {strategy.description}
-                    </p>
+          {(strategies || []).map((strategy, index) => {
+            const gateConfig = getGateStatusConfig(strategy.gateStatus);
+            const isGatePending = gateMutation.isPending;
+            return (
+              <Card
+                key={strategy.id}
+                className="bg-surface border-border"
+                data-testid={`strategy-card-${index}`}
+              >
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-lg text-text-primary">
+                        {strategy.name}
+                      </CardTitle>
+                      <p className="text-text-secondary text-sm mt-1">
+                        {strategy.description}
+                      </p>
+                    </div>
+                    <Badge className={getStatusColor(strategy.status)}>
+                      {strategy.status.charAt(0).toUpperCase() +
+                        strategy.status.slice(1)}
+                    </Badge>
                   </div>
-                  <Badge className={getStatusColor(strategy.status)}>
-                    {strategy.status.charAt(0).toUpperCase() +
-                      strategy.status.slice(1)}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-text-secondary text-xs">Performance</p>
-                    <p
-                      className={`font-semibold ${
-                        strategy.performance > 0 ? "text-success" : "text-danger"
-                      }`}
-                    >
-                      {strategy.performance > 0 ? "+" : ""}
-                      {strategy.performance.toFixed(2)}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-text-secondary text-xs">Sharpe Ratio</p>
-                    <p className="font-semibold text-text-primary">
-                      {strategy.sharpeRatio.toFixed(2)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-text-secondary text-xs">Max Drawdown</p>
-                    <p className="font-semibold text-danger">
-                      {strategy.maxDrawdown.toFixed(2)}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-text-secondary text-xs">Win Rate</p>
-                    <p className="font-semibold text-text-primary">
-                      {strategy.winRate.toFixed(1)}%
-                    </p>
-                  </div>
-                </div>
 
-                <div className="border-t border-border pt-4">
-                  <p className="text-text-secondary text-xs mb-2">
-                    Total Trades: {strategy.totalTrades}
-                  </p>
-                  <div className="flex space-x-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1 bg-background border-border hover:bg-border"
-                      onClick={() => handleToggleStatus(strategy)}
-                      disabled={toggleStatusMutation.isPending}
-                      data-testid={`button-toggle-${index}`}
-                    >
-                      {strategy.status === "active" ? (
-                        <>
-                          <Pause className="mr-1 h-3 w-3" />
-                          Pause
-                        </>
-                      ) : (
-                        <>
-                          <Play className="mr-1 h-3 w-3" />
-                          Start
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="bg-background border-border hover:bg-border"
-                      onClick={() => handleEdit(strategy)}
-                      data-testid={`button-settings-${index}`}
-                    >
-                      <Settings className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="bg-background border-border hover:bg-danger/20 hover:border-danger hover:text-danger"
-                      onClick={() => handleDelete(strategy)}
-                      data-testid={`button-delete-${index}`}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <Badge className={`text-xs font-medium ${getStageBadgeClass(strategy.stage)}`}>
+                      {STAGE_LABELS[strategy.stage]}
+                    </Badge>
+                    <Badge className={`text-xs ${gateConfig.className}`}>
+                      {gateConfig.label}
+                    </Badge>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-text-secondary text-xs">Performance</p>
+                      <p
+                        className={`font-semibold ${
+                          strategy.performance > 0 ? "text-success" : "text-danger"
+                        }`}
+                      >
+                        {strategy.performance > 0 ? "+" : ""}
+                        {strategy.performance.toFixed(2)}%
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-text-secondary text-xs">Sharpe Ratio</p>
+                      <p className="font-semibold text-text-primary">
+                        {strategy.sharpeRatio.toFixed(2)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-text-secondary text-xs">Max Drawdown</p>
+                      <p className="font-semibold text-danger">
+                        {strategy.maxDrawdown.toFixed(2)}%
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-text-secondary text-xs">Win Rate</p>
+                      <p className="font-semibold text-text-primary">
+                        {strategy.winRate.toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border pt-4 space-y-3">
+                    <p className="text-text-secondary text-xs">
+                      Total Trades: {strategy.totalTrades}
+                    </p>
+
+                    <div className="flex space-x-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 bg-background border-border hover:bg-border"
+                        onClick={() => handleToggleStatus(strategy)}
+                        disabled={toggleStatusMutation.isPending}
+                        data-testid={`button-toggle-${index}`}
+                      >
+                        {strategy.status === "active" ? (
+                          <>
+                            <Pause className="mr-1 h-3 w-3" />
+                            Pause
+                          </>
+                        ) : (
+                          <>
+                            <Play className="mr-1 h-3 w-3" />
+                            Start
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="bg-background border-border hover:bg-border"
+                        onClick={() => handleEdit(strategy)}
+                        data-testid={`button-settings-${index}`}
+                      >
+                        <Settings className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="bg-background border-border hover:bg-danger/20 hover:border-danger hover:text-danger"
+                        onClick={() => handleDelete(strategy)}
+                        data-testid={`button-delete-${index}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full bg-background border-border hover:bg-border text-text-secondary"
+                          disabled={isGatePending}
+                          data-testid={`button-gate-menu-${index}`}
+                        >
+                          Gate Review
+                          <ChevronDown className="ml-1 h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="bg-surface border-border w-44">
+                        <DropdownMenuItem
+                          className="cursor-pointer hover:bg-success/10 focus:bg-success/10 text-success"
+                          onClick={() => gateMutation.mutate({ id: strategy.id, result: "passed" })}
+                        >
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          Pass Gate
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator className="bg-border" />
+                        <DropdownMenuItem
+                          className="cursor-pointer hover:bg-warning/10 focus:bg-warning/10 text-warning"
+                          onClick={() => gateMutation.mutate({ id: strategy.id, result: "failed" })}
+                        >
+                          <XCircle className="mr-2 h-4 w-4" />
+                          Fail Gate
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="cursor-pointer hover:bg-border focus:bg-border text-text-secondary"
+                          onClick={() => gateMutation.mutate({ id: strategy.id, result: "discarded" })}
+                        >
+                          <Archive className="mr-2 h-4 w-4" />
+                          Discard
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
         {(!strategies || strategies.length === 0) && (

@@ -23,6 +23,41 @@ export const insertSettingsDbSchema = createInsertSchema(settingsTable).omit({ i
 export type SettingsDb = typeof settingsTable.$inferSelect;
 export type InsertSettingsDb = z.infer<typeof insertSettingsDbSchema>;
 
+export const PIPELINE_STAGES = [
+  "idea",
+  "feasibility",
+  "walk_forward",
+  "monte_carlo",
+  "incubation",
+  "diversification_sizing",
+  "live",
+] as const;
+
+export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+export const pipelineStageSchema = z.enum(PIPELINE_STAGES);
+
+export function nextStage(stage: PipelineStage): PipelineStage | null {
+  const idx = PIPELINE_STAGES.indexOf(stage);
+  if (idx === -1 || idx === PIPELINE_STAGES.length - 1) return null;
+  return PIPELINE_STAGES[idx + 1];
+}
+
+export const gateStatusSchema = z.enum([
+  "in_progress",
+  "passed",
+  "failed",
+  "discarded",
+]);
+export type GateStatus = z.infer<typeof gateStatusSchema>;
+
+export const gateHistoryEntrySchema = z.object({
+  stage: pipelineStageSchema,
+  result: z.enum(["passed", "failed", "discarded"]),
+  note: z.string().optional(),
+  at: z.date(),
+});
+export type GateHistoryEntry = z.infer<typeof gateHistoryEntrySchema>;
+
 export const strategySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -34,6 +69,9 @@ export const strategySchema = z.object({
   maxDrawdown: z.number(),
   winRate: z.number(),
   totalTrades: z.number(),
+  stage: pipelineStageSchema.default("idea"),
+  gateStatus: gateStatusSchema.default("in_progress"),
+  gateHistory: z.array(gateHistoryEntrySchema).default([]),
   createdAt: z.date(),
 });
 

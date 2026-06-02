@@ -2,9 +2,10 @@ import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Plus, ArrowRight } from "lucide-react";
-import { Strategy } from "@shared/schema";
+import { Strategy, PipelineStage, GateStatus } from "@shared/schema";
 import { TradingService } from "@/services/tradingServices";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -12,6 +13,30 @@ import { useToast } from "@/hooks/use-toast";
 interface StrategyListProps {
   strategies?: Strategy[];
   isLoading?: boolean;
+}
+
+const STAGE_LABELS: Record<PipelineStage, string> = {
+  idea: "Idea",
+  feasibility: "Feasibility",
+  walk_forward: "Walk Forward",
+  monte_carlo: "Monte Carlo",
+  incubation: "Incubation",
+  diversification_sizing: "Div. & Sizing",
+  live: "Live",
+};
+
+function getGateStatusBadgeClass(status: GateStatus): string {
+  switch (status) {
+    case "passed":
+      return "bg-success/20 text-success";
+    case "failed":
+      return "bg-danger/20 text-danger";
+    case "discarded":
+      return "bg-border text-text-secondary opacity-60";
+    case "in_progress":
+    default:
+      return "bg-warning/10 text-warning";
+  }
 }
 
 export default function StrategyList({ strategies, isLoading }: StrategyListProps) {
@@ -90,16 +115,25 @@ export default function StrategyList({ strategies, isLoading }: StrategyListProp
       </CardHeader>
       <CardContent className="p-6 space-y-4">
         {strategies.map((strategy, index) => (
-          <div 
-            key={strategy.id} 
+          <div
+            key={strategy.id}
             className="flex items-center justify-between p-4 bg-background rounded-lg"
             data-testid={`strategy-item-${index}`}
           >
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <p className="font-medium text-text-primary">{strategy.name}</p>
-              <p className="text-text-secondary text-sm">{strategy.description}</p>
+              <p className="text-text-secondary text-sm truncate">{strategy.description}</p>
+              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                <Badge className="text-xs px-1.5 py-0 bg-border text-text-secondary">
+                  {STAGE_LABELS[strategy.stage]}
+                </Badge>
+                <Badge className={`text-xs px-1.5 py-0 ${getGateStatusBadgeClass(strategy.gateStatus)}`}>
+                  {strategy.gateStatus === "in_progress" ? "In Progress" :
+                   strategy.gateStatus.charAt(0).toUpperCase() + strategy.gateStatus.slice(1)}
+                </Badge>
+              </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 ml-3 shrink-0">
               <div className="text-right">
                 <p className={`text-sm font-medium ${
                   strategy.performance > 0 ? 'text-success' : 'text-danger'
@@ -124,7 +158,7 @@ export default function StrategyList({ strategies, isLoading }: StrategyListProp
         )}
 
         <Link href="/strategies">
-          <Button 
+          <Button
             className="w-full mt-4 bg-primary hover:bg-primary/90 text-white"
             data-testid="button-add-strategy"
           >

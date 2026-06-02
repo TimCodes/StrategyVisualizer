@@ -65,6 +65,38 @@ Preferred communication style: Simple, everyday language. Direct and focused res
 - A persistent yellow banner is shown at the top of all pages while `liveTradingEnabled` is `false`: *"Simulated mode — backtest results are randomly generated and live trading is disabled."*
 - Every backtest result row/card shows a yellow **Simulated** badge driven by the `dataSource` field.
 
+## Strategy Pipeline State Machine
+
+Every strategy carries three pipeline metadata fields (separate from the operational `status` field):
+
+### Fields
+- **`stage`** (`PipelineStage`) — where in the development pipeline the strategy sits. Ordered stages:
+  `idea → feasibility → walk_forward → monte_carlo → incubation → diversification_sizing → live`
+- **`gateStatus`** (`GateStatus`) — current gate outcome: `in_progress | passed | failed | discarded`
+- **`gateHistory`** (`GateHistoryEntry[]`) — append-only log of every gate decision, each entry carrying `{ stage, result, note?, at }`
+
+### Defaults
+New strategies always start at `stage: "idea"`, `gateStatus: "in_progress"`, `gateHistory: []`.
+
+### Transition Rules (server-enforced, one step at a time)
+- **passed**: advance exactly one stage and reset `gateStatus = "in_progress"`; if already at `"live"`, set `gateStatus = "passed"`.
+- **failed**: keep current stage, set `gateStatus = "failed"`.
+- **discarded**: keep current stage, set `gateStatus = "discarded"`.
+
+Every transition appends one entry to `gateHistory` recording the stage it occurred at and a timestamp.
+
+### API
+- `POST /api/strategies/:id/gate` — body: `{ result: "passed" | "failed" | "discarded", note?: string }`. Returns the updated strategy. 404 if not found, 400 on invalid body.
+- Generic `PATCH /api/strategies/:id` **cannot** mutate `stage`, `gateStatus`, or `gateHistory` — those keys are stripped; gate transitions must go through the dedicated endpoint.
+
+### Persistence Note
+Strategies (including pipeline state) are stored **in-memory** (MemStorage). All state resets on server restart. Persisting strategies to Postgres is a separate future step.
+
+### UI
+- Each strategy card on `/strategies` shows a **stage badge** (e.g. "Live", "Idea") and a **gate-status badge** (color-coded: green = passed, amber = in progress, red = failed, gray = discarded).
+- A **"Gate Review" dropdown** on each card provides Pass Gate / Fail Gate / Discard actions that POST to `/api/strategies/:id/gate` and immediately refetch.
+- The dashboard `StrategyList` widget also shows the stage and gate-status badges in compact form.
+
 ## Recent Changes
 
 - **March 15, 2026**: Added three major new features — LEAN Strategy Editor, Monaco Code Editor, and AI Strategy Agent:

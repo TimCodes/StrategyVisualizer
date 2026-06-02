@@ -24,6 +24,8 @@ import {
   InsertLeanBacktest,
   leanProjectsTable,
   leanBacktestsTable,
+  GateHistoryEntry,
+  nextStage,
 } from "@shared/schema";
 import { getDb } from "./db";
 
@@ -33,6 +35,7 @@ export interface IStorage {
   createStrategy(data: InsertStrategy): Promise<Strategy>;
   updateStrategy(id: string, data: Partial<InsertStrategy>): Promise<Strategy>;
   deleteStrategy(id: string): Promise<void>;
+  recordGate(id: string, params: { result: "passed" | "failed" | "discarded"; note?: string }): Promise<Strategy>;
 
   getTrades(): Promise<Trade[]>;
   getTradesByStrategy(strategyId: string): Promise<Trade[]>;
@@ -129,6 +132,9 @@ export class MemStorage implements IStorage {
         maxDrawdown: -8.32,
         winRate: 68.4,
         totalTrades: 247,
+        stage: "live",
+        gateStatus: "passed",
+        gateHistory: [{ stage: "live", result: "passed", at: new Date("2024-01-01") }],
         createdAt: new Date("2024-01-01"),
       },
       {
@@ -142,6 +148,9 @@ export class MemStorage implements IStorage {
         maxDrawdown: -12.45,
         winRate: 61.2,
         totalTrades: 189,
+        stage: "live",
+        gateStatus: "passed",
+        gateHistory: [{ stage: "live", result: "passed", at: new Date("2024-01-15") }],
         createdAt: new Date("2024-01-15"),
       },
       {
@@ -155,6 +164,9 @@ export class MemStorage implements IStorage {
         maxDrawdown: -18.67,
         winRate: 45.8,
         totalTrades: 312,
+        stage: "idea",
+        gateStatus: "in_progress",
+        gateHistory: [],
         createdAt: new Date("2024-02-01"),
       },
     ];
@@ -299,8 +311,11 @@ export class MemStorage implements IStorage {
   async createStrategy(data: InsertStrategy): Promise<Strategy> {
     const id = randomUUID();
     const strategy: Strategy = {
-      id,
+      stage: "idea",
+      gateStatus: "in_progress",
+      gateHistory: [],
       ...data,
+      id,
       createdAt: new Date(),
     };
     this.strategies.set(id, strategy);
@@ -312,7 +327,46 @@ export class MemStorage implements IStorage {
     if (!existing) {
       throw new Error("Strategy not found");
     }
-    const updated: Strategy = { ...existing, ...data };
+    // Gate transition fields are managed exclusively by recordGate
+    const { stage: _s, gateStatus: _gs, gateHistory: _gh, ...safeData } = data as any;
+    const updated: Strategy = { ...existing, ...safeData };
+    this.strategies.set(id, updated);
+    return updated;
+  }
+
+  async recordGate(
+    id: string,
+    params: { result: "passed" | "failed" | "discarded"; note?: string }
+  ): Promise<Strategy> {
+    const existing = this.strategies.get(id);
+    if (!existing) {
+      throw new Error("Strategy not found");
+    }
+    const entry: GateHistoryEntry = {
+      stage: existing.stage,
+      result: params.result,
+      note: params.note,
+      at: new Date(),
+    };
+    const gateHistory = [...existing.gateHistory, entry];
+    let stage = existing.stage;
+    let gateStatus = existing.gateStatus;
+
+    if (params.result === "passed") {
+      const next = nextStage(existing.stage);
+      if (next !== null) {
+        stage = next;
+        gateStatus = "in_progress";
+      } else {
+        gateStatus = "passed";
+      }
+    } else if (params.result === "failed") {
+      gateStatus = "failed";
+    } else if (params.result === "discarded") {
+      gateStatus = "discarded";
+    }
+
+    const updated: Strategy = { ...existing, stage, gateStatus, gateHistory };
     this.strategies.set(id, updated);
     return updated;
   }

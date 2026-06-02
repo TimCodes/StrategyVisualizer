@@ -1,6 +1,12 @@
 import type { Express, Request, Response } from "express";
+import { z } from "zod";
 import { storage } from "../storage";
 import { insertStrategySchema } from "@shared/schema";
+
+const gateBodySchema = z.object({
+  result: z.enum(["passed", "failed", "discarded"]),
+  note: z.string().optional(),
+});
 
 export function registerStrategyRoutes(app: Express) {
   app.get("/api/strategies", async (_req: Request, res: Response) => {
@@ -62,6 +68,22 @@ export function registerStrategyRoutes(app: Express) {
         return res.status(404).json({ error: "Strategy not found" });
       }
       res.status(500).json({ error: "Failed to delete strategy" });
+    }
+  });
+
+  app.post("/api/strategies/:id/gate", async (req: Request, res: Response) => {
+    try {
+      const parsed = gateBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request body", details: parsed.error.errors });
+      }
+      const strategy = await storage.recordGate(req.params.id, parsed.data);
+      res.json(strategy);
+    } catch (error) {
+      if ((error as Error).message === "Strategy not found") {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      res.status(500).json({ error: "Failed to record gate transition" });
     }
   });
 }
