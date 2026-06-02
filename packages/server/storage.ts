@@ -686,10 +686,14 @@ export class MemStorage implements IStorage {
   }
 
   async getLeanProjects(): Promise<LeanProject[]> {
-    const db = await getDb();
-    if (db) {
-      const rows = await db.select().from(leanProjectsTable).orderBy(desc(leanProjectsTable.updatedAt));
-      return rows.map(this.mapDbLeanProject);
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(leanProjectsTable).orderBy(desc(leanProjectsTable.updatedAt));
+        return rows.map(this.mapDbLeanProject);
+      }
+    } catch {
+      // fall through to in-memory
     }
     return Array.from(this.leanProjects.values()).sort(
       (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
@@ -697,26 +701,19 @@ export class MemStorage implements IStorage {
   }
 
   async getLeanProjectByName(name: string): Promise<LeanProject | null> {
-    const db = await getDb();
-    if (db) {
-      const rows = await db.select().from(leanProjectsTable).where(eq(leanProjectsTable.name, name));
-      return rows[0] ? this.mapDbLeanProject(rows[0]) : null;
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(leanProjectsTable).where(eq(leanProjectsTable.name, name));
+        return rows[0] ? this.mapDbLeanProject(rows[0]) : null;
+      }
+    } catch {
+      // fall through to in-memory
     }
     return this.leanProjects.get(name) ?? null;
   }
 
   async createLeanProject(data: InsertLeanProject): Promise<LeanProject> {
-    const db = await getDb();
-    if (db) {
-      const rows = await db.insert(leanProjectsTable).values({
-        name: data.name,
-        code: data.code,
-        description: data.description ?? null,
-        generatedBy: data.generatedBy ?? null,
-        lastBacktestId: data.lastBacktestId ?? null,
-      }).returning();
-      return this.mapDbLeanProject(rows[0]);
-    }
     const now = new Date();
     const project: LeanProject = {
       id: randomUUID(),
@@ -725,34 +722,45 @@ export class MemStorage implements IStorage {
       updatedAt: now,
     };
     this.leanProjects.set(project.name, project);
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.insert(leanProjectsTable).values({
+          name: data.name,
+          code: data.code,
+          description: data.description ?? null,
+          generatedBy: data.generatedBy ?? null,
+          lastBacktestId: data.lastBacktestId ?? null,
+        }).returning();
+        return this.mapDbLeanProject(rows[0]);
+      }
+    } catch {
+      // in-memory copy already set above
+    }
     return project;
   }
 
   async updateLeanProjectCode(name: string, code: string): Promise<LeanProject> {
-    const db = await getDb();
-    if (db) {
-      const rows = await db.update(leanProjectsTable)
-        .set({ code, updatedAt: new Date() })
-        .where(eq(leanProjectsTable.name, name))
-        .returning();
-      if (!rows[0]) throw new Error("Project not found");
-      return this.mapDbLeanProject(rows[0]);
-    }
     const existing = this.leanProjects.get(name);
     if (!existing) throw new Error("Project not found");
     const updated: LeanProject = { ...existing, code, updatedAt: new Date() };
     this.leanProjects.set(name, updated);
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.update(leanProjectsTable)
+          .set({ code, updatedAt: new Date() })
+          .where(eq(leanProjectsTable.name, name))
+          .returning();
+        if (rows[0]) return this.mapDbLeanProject(rows[0]);
+      }
+    } catch {
+      // in-memory copy already updated above
+    }
     return updated;
   }
 
   async updateLeanProjectLastBacktest(name: string, backtestId: string): Promise<void> {
-    const db = await getDb();
-    if (db) {
-      await db.update(leanProjectsTable)
-        .set({ lastBacktestId: backtestId, updatedAt: new Date() })
-        .where(eq(leanProjectsTable.name, name));
-      return;
-    }
     const existing = this.leanProjects.get(name);
     if (existing) {
       this.leanProjects.set(name, {
@@ -761,69 +769,92 @@ export class MemStorage implements IStorage {
         updatedAt: new Date(),
       });
     }
+    try {
+      const db = await getDb();
+      if (db) {
+        await db.update(leanProjectsTable)
+          .set({ lastBacktestId: backtestId, updatedAt: new Date() })
+          .where(eq(leanProjectsTable.name, name));
+      }
+    } catch {
+      // in-memory copy already updated above
+    }
   }
 
   async deleteLeanProject(name: string): Promise<void> {
-    const db = await getDb();
-    if (db) {
-      const rows = await db.delete(leanProjectsTable).where(eq(leanProjectsTable.name, name)).returning();
-      if (!rows[0]) throw new Error("Project not found");
-      return;
-    }
     if (!this.leanProjects.has(name)) throw new Error("Project not found");
     this.leanProjects.delete(name);
+    try {
+      const db = await getDb();
+      if (db) {
+        await db.delete(leanProjectsTable).where(eq(leanProjectsTable.name, name));
+      }
+    } catch {
+      // in-memory copy already deleted above
+    }
   }
 
   async createLeanBacktest(data: InsertLeanBacktest): Promise<LeanBacktest> {
-    const db = await getDb();
-    if (db) {
-      const rows = await db.insert(leanBacktestsTable).values({
-        projectId: data.projectId,
-        status: data.status,
-        totalReturn: data.totalReturn,
-        sharpeRatio: data.sharpeRatio,
-        maxDrawdown: data.maxDrawdown,
-        winRate: data.winRate,
-        totalTrades: data.totalTrades,
-        equityCurve: data.equityCurve,
-        rawResults: data.rawResults,
-        errorLog: data.errorLog ?? null,
-      }).returning();
-      return this.mapDbLeanBacktest(rows[0]);
-    }
     const backtest: LeanBacktest = {
       id: randomUUID(),
       ...data,
       runAt: new Date(),
     };
     this.leanBacktests.set(backtest.id, backtest);
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.insert(leanBacktestsTable).values({
+          projectId: data.projectId,
+          status: data.status,
+          totalReturn: data.totalReturn,
+          sharpeRatio: data.sharpeRatio,
+          maxDrawdown: data.maxDrawdown,
+          winRate: data.winRate,
+          totalTrades: data.totalTrades,
+          equityCurve: data.equityCurve,
+          rawResults: data.rawResults,
+          errorLog: data.errorLog ?? null,
+        }).returning();
+        return this.mapDbLeanBacktest(rows[0]);
+      }
+    } catch {
+      // in-memory copy already set above
+    }
     return backtest;
   }
 
   async updateLeanBacktest(id: string, data: Partial<InsertLeanBacktest>): Promise<LeanBacktest> {
-    const db = await getDb();
-    if (db) {
-      const rows = await db.update(leanBacktestsTable)
-        .set(data)
-        .where(eq(leanBacktestsTable.id, id))
-        .returning();
-      if (!rows[0]) throw new Error("Backtest not found");
-      return this.mapDbLeanBacktest(rows[0]);
-    }
     const existing = this.leanBacktests.get(id);
     if (!existing) throw new Error("Backtest not found");
     const updated: LeanBacktest = { ...existing, ...data };
     this.leanBacktests.set(id, updated);
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.update(leanBacktestsTable)
+          .set(data)
+          .where(eq(leanBacktestsTable.id, id))
+          .returning();
+        if (rows[0]) return this.mapDbLeanBacktest(rows[0]);
+      }
+    } catch {
+      // in-memory copy already updated above
+    }
     return updated;
   }
 
   async getLeanBacktestsByProject(projectId: string): Promise<LeanBacktest[]> {
-    const db = await getDb();
-    if (db) {
-      const rows = await db.select().from(leanBacktestsTable)
-        .where(eq(leanBacktestsTable.projectId, projectId))
-        .orderBy(desc(leanBacktestsTable.runAt));
-      return rows.map(this.mapDbLeanBacktest);
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(leanBacktestsTable)
+          .where(eq(leanBacktestsTable.projectId, projectId))
+          .orderBy(desc(leanBacktestsTable.runAt));
+        return rows.map(this.mapDbLeanBacktest);
+      }
+    } catch {
+      // fall through to in-memory
     }
     return Array.from(this.leanBacktests.values())
       .filter((b) => b.projectId === projectId)
