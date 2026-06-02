@@ -1,5 +1,5 @@
 import { storage } from "../storage";
-import type { LeanBacktest, InsertGateResult } from "@shared/schema";
+import type { LeanBacktest, GateResult } from "@shared/schema";
 
 // ─────────────────────────────────────────────────────────────
 //  Normal distribution helpers
@@ -350,7 +350,7 @@ export async function persistGateResult(
   metrics: Record<string, unknown> | null,
   dataSource: string | null,
   reason: string | null
-): Promise<InsertGateResult & { id?: string; computedAt?: Date }> {
+): Promise<GateResult> {
   const record = await storage.recordGateResult({
     strategyId,
     gate,

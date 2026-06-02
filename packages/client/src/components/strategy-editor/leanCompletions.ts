@@ -3,7 +3,7 @@ import type { Monaco } from "@monaco-editor/react";
 export function registerLeanCompletions(monaco: Monaco) {
   monaco.languages.registerCompletionItemProvider("python", {
     triggerCharacters: [".", "s", "Q"],
-    provideCompletionItems: (model, position) => {
+    provideCompletionItems: (model: import("monaco-editor").editor.ITextModel, position: import("monaco-editor").Position) => {
       const wordInfo = model.getWordUntilPosition(position);
       const range = {
         startLineNumber: position.lineNumber,
@@ -253,7 +253,7 @@ export function registerLeanCompletions(monaco: Monaco) {
   });
 
   monaco.languages.registerHoverProvider("python", {
-    provideHover: (model, position) => {
+    provideHover: (model: import("monaco-editor").editor.ITextModel, position: import("monaco-editor").Position) => {
       const word = model.getWordAtPosition(position);
       if (!word) return null;
 

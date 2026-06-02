@@ -54,6 +54,11 @@ export default function StrategyForm({
     maxDrawdown: s?.maxDrawdown ?? 0,
     winRate: s?.winRate ?? 0,
     totalTrades: s?.totalTrades ?? 0,
+    stage: s?.stage ?? "idea",
+    gateStatus: s?.gateStatus ?? "in_progress",
+    gateHistory: s?.gateHistory ?? [],
+    refinementHistory: s?.refinementHistory ?? [],
+    incubationObservations: s?.incubationObservations ?? [],
   });
 
   const form = useForm<FormData>({

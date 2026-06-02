@@ -56,9 +56,12 @@ export default function Overview() {
       const now = new Date();
       const oneYearAgo = new Date(now);
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-      await TradingService.runBacktest("1", {
-        startDate: oneYearAgo,
-        endDate: now,
+      await TradingService.runBacktest({
+        strategyId: "1",
+        startDate: oneYearAgo.toISOString(),
+        endDate: now.toISOString(),
+        initialCapital: 100000,
+        symbol: "BTC/USD",
       });
       toast({
         title: "Backtest Started",

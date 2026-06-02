@@ -1,0 +1,41 @@
+GOAL
+`npm run check` (tsc) reports 26 type errors though the app runs (esbuild skips type-
+checking). Make `npx tsc --noEmit` pass with zero errors. Do not change gate logic,
+guards, or any passing test behavior.
+
+FIXES
+1. Stale fixtures missing new required fields — update every object literal to include the
+   fields the schema now requires:
+   - Strategies in packages/server/storage.ts (seed data), packages/client/src/services/
+     mockData.ts, and packages/client/src/components/strategies/StrategyForm.tsx must include
+     stage, gateStatus, gateHistory, refinementHistory, AND incubationObservations.
+   - BacktestResult fixtures in mockData.ts and storage.ts must include dataSource
+     ("simulated").
+   - The leanBacktest construction in storage.ts (~line 891) must include dataSource.
+2. packages/server/storage.ts createStrategy (~lines 341-348): the defaults are listed
+   BEFORE `...data`, so they're always overwritten. Rewrite to spread data first, then
+   apply defaults only when missing, and INCLUDE incubationObservations:
+     { ...data, id, createdAt: new Date(),
+       stage: data.stage ?? "idea",
+       gateStatus: data.gateStatus ?? "in_progress",
+       gateHistory: data.gateHistory ?? [],
+       refinementHistory: data.refinementHistory ?? [],
+       incubationObservations: data.incubationObservations ?? [] }
+3. packages/server/services/gates.ts (~line 371): `metrics` is typed `unknown` but the
+   gate_results insert expects Json. Type it correctly (cast to the insert schema's metrics
+   type) so it compiles without `any`.
+4. packages/client/src/pages/Overview.tsx (~line 59): a call passes 2 args to a function
+   expecting 1 — fix the call site to match the signature.
+5. packages/server/storage.ts (~lines 129, 693): an exchange value typed as possibly
+   undefined / a union missing "coingecko" | "ibkr". Widen the type or guard the undefined
+   so it matches the connector enum.
+6. packages/client/src/components/strategy-editor/leanCompletions.ts (~lines 6, 256):
+   add explicit types to the `model` and `position` parameters (Monaco types) to clear the
+   implicit-any errors.
+
+VERIFY
+- `npx tsc --noEmit` exits clean (0 errors).
+- `npx vitest run packages/server/services/__tests__/gates.test.ts` still passes 21/21.
+- The app still starts and the dashboard loads.
+
+Show me the tsc output (should be empty) and confirm the 21 tests still pass.

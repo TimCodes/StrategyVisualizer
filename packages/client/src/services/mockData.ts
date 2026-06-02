@@ -20,6 +20,11 @@ export const mockStrategies: Strategy[] = [
     maxDrawdown: -8.32,
     winRate: 68.4,
     totalTrades: 247,
+    stage: "live",
+    gateStatus: "passed",
+    gateHistory: [],
+    refinementHistory: [],
+    incubationObservations: [],
     createdAt: new Date("2024-01-01"),
   },
   {
@@ -33,6 +38,11 @@ export const mockStrategies: Strategy[] = [
     maxDrawdown: -12.45,
     winRate: 61.2,
     totalTrades: 189,
+    stage: "live",
+    gateStatus: "passed",
+    gateHistory: [],
+    refinementHistory: [],
+    incubationObservations: [],
     createdAt: new Date("2024-01-15"),
   },
   {
@@ -46,6 +56,11 @@ export const mockStrategies: Strategy[] = [
     maxDrawdown: -18.67,
     winRate: 45.8,
     totalTrades: 312,
+    stage: "idea",
+    gateStatus: "in_progress",
+    gateHistory: [],
+    refinementHistory: [],
+    incubationObservations: [],
     createdAt: new Date("2024-02-01"),
   },
 ];
@@ -143,6 +158,7 @@ export const mockBacktestResults: BacktestResult[] = [
     winRate: 68.4,
     totalTrades: 247,
     status: "completed",
+    dataSource: "simulated",
     createdAt: new Date("2024-01-02"),
   },
   {
@@ -157,6 +173,7 @@ export const mockBacktestResults: BacktestResult[] = [
     winRate: 61.2,
     totalTrades: 189,
     status: "completed",
+    dataSource: "simulated",
     createdAt: new Date("2024-01-03"),
   },
   {
@@ -171,6 +188,7 @@ export const mockBacktestResults: BacktestResult[] = [
     winRate: 45.8,
     totalTrades: 312,
     status: "failed",
+    dataSource: "simulated",
     createdAt: new Date("2024-01-04"),
   },
 ];

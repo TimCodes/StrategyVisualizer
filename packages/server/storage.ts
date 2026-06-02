@@ -126,7 +126,7 @@ export class MemStorage implements IStorage {
       riskLimit: 2,
       maxPositions: 10,
       autoStopLoss: false,
-      exchange: undefined,
+      exchange: "coingecko",
       tradeAlerts: true,
       performanceAlerts: false,
       systemAlerts: true,
@@ -162,6 +162,7 @@ export class MemStorage implements IStorage {
         gateStatus: "passed",
         gateHistory: [{ stage: "live", result: "passed", at: new Date("2024-01-01") }],
         refinementHistory: [],
+        incubationObservations: [],
         createdAt: new Date("2024-01-01"),
       },
       {
@@ -179,6 +180,7 @@ export class MemStorage implements IStorage {
         gateStatus: "passed",
         gateHistory: [{ stage: "live", result: "passed", at: new Date("2024-01-15") }],
         refinementHistory: [],
+        incubationObservations: [],
         createdAt: new Date("2024-01-15"),
       },
       {
@@ -196,6 +198,7 @@ export class MemStorage implements IStorage {
         gateStatus: "in_progress",
         gateHistory: [],
         refinementHistory: [],
+        incubationObservations: [],
         createdAt: new Date("2024-02-01"),
       },
     ];
@@ -282,6 +285,7 @@ export class MemStorage implements IStorage {
         winRate: 68.4,
         totalTrades: 247,
         status: "completed",
+        dataSource: "simulated",
         createdAt: new Date("2024-01-02"),
       },
       {
@@ -296,6 +300,7 @@ export class MemStorage implements IStorage {
         winRate: 61.2,
         totalTrades: 189,
         status: "completed",
+        dataSource: "simulated",
         createdAt: new Date("2024-01-03"),
       },
       {
@@ -310,6 +315,7 @@ export class MemStorage implements IStorage {
         winRate: 45.8,
         totalTrades: 312,
         status: "failed",
+        dataSource: "simulated",
         createdAt: new Date("2024-01-04"),
       },
     ];
@@ -340,13 +346,14 @@ export class MemStorage implements IStorage {
   async createStrategy(data: InsertStrategy): Promise<Strategy> {
     const id = randomUUID();
     const strategy: Strategy = {
-      stage: "idea",
-      gateStatus: "in_progress",
-      gateHistory: [],
-      refinementHistory: [],
       ...data,
       id,
       createdAt: new Date(),
+      stage: data.stage ?? "idea",
+      gateStatus: data.gateStatus ?? "in_progress",
+      gateHistory: data.gateHistory ?? [],
+      refinementHistory: data.refinementHistory ?? [],
+      incubationObservations: data.incubationObservations ?? [],
     };
     this.strategies.set(id, strategy);
     return strategy;
@@ -690,7 +697,7 @@ export class MemStorage implements IStorage {
       riskLimit: dbSettings.riskLimit,
       maxPositions: dbSettings.maxPositions,
       autoStopLoss: dbSettings.autoStopLoss,
-      exchange: dbSettings.exchange as "binance" | "coinbase" | "kraken" | "alpaca" | undefined,
+      exchange: (dbSettings.exchange ?? "coingecko") as "binance" | "coinbase" | "kraken" | "alpaca" | "coingecko" | "ibkr",
       tradeAlerts: dbSettings.tradeAlerts,
       performanceAlerts: dbSettings.performanceAlerts,
       systemAlerts: dbSettings.systemAlerts,
@@ -899,6 +906,7 @@ export class MemStorage implements IStorage {
       totalTrades: row.totalTrades,
       equityCurve: row.equityCurve as LeanBacktest["equityCurve"],
       rawResults: row.rawResults as LeanBacktest["rawResults"],
+      dataSource: (row.dataSource as "simulated" | "live_engine") ?? "simulated",
       errorLog: row.errorLog ?? null,
       runAt: row.runAt,
     };
