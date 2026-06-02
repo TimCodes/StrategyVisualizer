@@ -39,6 +39,7 @@ export interface IStorage {
   updateStrategy(id: string, data: Partial<InsertStrategy>): Promise<Strategy>;
   deleteStrategy(id: string): Promise<void>;
   recordGate(id: string, params: { result: "passed" | "failed" | "discarded"; note?: string }): Promise<Strategy>;
+  appendRefinementLog(id: string, entry: { refinementType: "logic_fix" | "optimization"; rationale: string }): Promise<void>;
 
   getTrades(): Promise<Trade[]>;
   getTradesByStrategy(strategyId: string): Promise<Trade[]>;
@@ -147,6 +148,7 @@ export class MemStorage implements IStorage {
         stage: "live",
         gateStatus: "passed",
         gateHistory: [{ stage: "live", result: "passed", at: new Date("2024-01-01") }],
+        refinementHistory: [],
         createdAt: new Date("2024-01-01"),
       },
       {
@@ -163,6 +165,7 @@ export class MemStorage implements IStorage {
         stage: "live",
         gateStatus: "passed",
         gateHistory: [{ stage: "live", result: "passed", at: new Date("2024-01-15") }],
+        refinementHistory: [],
         createdAt: new Date("2024-01-15"),
       },
       {
@@ -179,6 +182,7 @@ export class MemStorage implements IStorage {
         stage: "idea",
         gateStatus: "in_progress",
         gateHistory: [],
+        refinementHistory: [],
         createdAt: new Date("2024-02-01"),
       },
     ];
@@ -326,12 +330,29 @@ export class MemStorage implements IStorage {
       stage: "idea",
       gateStatus: "in_progress",
       gateHistory: [],
+      refinementHistory: [],
       ...data,
       id,
       createdAt: new Date(),
     };
     this.strategies.set(id, strategy);
     return strategy;
+  }
+
+  async appendRefinementLog(
+    id: string,
+    entry: { refinementType: "logic_fix" | "optimization"; rationale: string }
+  ): Promise<void> {
+    const existing = this.strategies.get(id);
+    if (!existing) return;
+    const updated: Strategy = {
+      ...existing,
+      refinementHistory: [
+        ...(existing.refinementHistory ?? []),
+        { refinementType: entry.refinementType, rationale: entry.rationale, at: new Date() },
+      ],
+    };
+    this.strategies.set(id, updated);
   }
 
   async updateStrategy(id: string, data: Partial<InsertStrategy>): Promise<Strategy> {

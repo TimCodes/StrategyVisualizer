@@ -26,6 +26,8 @@ const runBacktestBodySchema = z.object({
 
 const generateStrategySchema = z.object({
   description: z.string().min(5),
+  edge: z.string().min(20, "Edge must be at least 20 characters — describe the market mechanism"),
+  acknowledgeWeakEdge: z.boolean().optional(),
   model: z.string().optional(),
   constraints: z
     .object({
@@ -45,9 +47,13 @@ const generateStrategySchema = z.object({
 
 const refineStrategySchema = z.object({
   previousCode: z.string().min(10),
-  userFeedback: z.string().min(3),
+  userFeedback: z.string().optional(),
+  rationale: z.string().min(15, "Rationale must be at least 15 characters"),
+  refinementType: z.enum(["logic_fix", "optimization"]),
   backtestResults: z.record(z.unknown()).optional(),
   model: z.string().optional(),
+  strategyId: z.string().optional(),
+  confirmedOptimization: z.boolean().optional(),
 });
 
 const explainStrategySchema = z.object({
@@ -103,10 +109,7 @@ export function registerLeanRoutes(app: Express) {
         if (!code || typeof code !== "string") {
           return res.status(400).json({ error: "Code is required" });
         }
-        const project = await storage.updateLeanProjectCode(
-          req.params.name,
-          code
-        );
+        const project = await storage.updateLeanProjectCode(req.params.name, code);
         res.json(project);
       } catch (error) {
         if ((error as Error).message === "Project not found") {
@@ -155,53 +158,38 @@ export function registerLeanRoutes(app: Express) {
         const io = getIO();
 
         const emitLog = (line: string) => {
-          if (socketId) {
-            emitToSocket(socketId, "lean:backtest:log", line);
-          } else {
-            io?.emit("lean:backtest:log", line);
-          }
+          if (socketId) emitToSocket(socketId, "lean:backtest:log", line);
+          else io?.emit("lean:backtest:log", line);
         };
-
         const emitEvent = (event: string, data: unknown) => {
-          if (socketId) {
-            emitToSocket(socketId, event, data);
-          } else {
-            io?.emit(event, data);
-          }
+          if (socketId) emitToSocket(socketId, event, data);
+          else io?.emit(event, data);
         };
 
         emitEvent("lean:backtest:start", { projectName: name, backtestId: backtest.id });
-
         res.json({ backtestId: backtest.id, status: "running" });
 
         const streamBacktest = async () => {
           try {
             const results = simulateLeanBacktest(code, name);
-
             for (let i = 0; i < results.logs.length; i++) {
               await new Promise((r) => setTimeout(r, 150));
               emitLog(results.logs[i]);
-
-              const progress = Math.round(((i + 1) / results.logs.length) * 100);
-              emitEvent("lean:backtest:progress", { progress });
+              emitEvent("lean:backtest:progress", {
+                progress: Math.round(((i + 1) / results.logs.length) * 100),
+              });
             }
-
-            const updatedBacktest = await storage.updateLeanBacktest(
-              backtest.id,
-              {
-                status: "completed",
-                totalReturn: results.totalReturn,
-                sharpeRatio: results.sharpeRatio,
-                maxDrawdown: results.maxDrawdown,
-                winRate: results.winRate,
-                totalTrades: results.totalTrades,
-                equityCurve: results.equityCurve,
-                rawResults: results,
-              }
-            );
-
+            const updatedBacktest = await storage.updateLeanBacktest(backtest.id, {
+              status: "completed",
+              totalReturn: results.totalReturn,
+              sharpeRatio: results.sharpeRatio,
+              maxDrawdown: results.maxDrawdown,
+              winRate: results.winRate,
+              totalTrades: results.totalTrades,
+              equityCurve: results.equityCurve,
+              rawResults: results,
+            });
             await storage.updateLeanProjectLastBacktest(name, backtest.id);
-
             emitEvent("lean:backtest:complete", updatedBacktest);
           } catch (err) {
             const errorMessage = (err as Error).message;
@@ -212,7 +200,6 @@ export function registerLeanRoutes(app: Express) {
             emitEvent("lean:backtest:error", errorMessage);
           }
         };
-
         streamBacktest();
       } catch (error) {
         console.error("Backtest error:", error);
@@ -263,22 +250,29 @@ export function registerLeanRoutes(app: Express) {
             .json({ error: "Invalid request", details: parsed.error.errors });
         }
 
-        const result = await generateStrategy(parsed.data as Parameters<typeof generateStrategy>[0]);
+        const result = await generateStrategy(
+          parsed.data as Parameters<typeof generateStrategy>[0]
+        );
+
         res.json(result);
-        try {
-          await storage.recordTrial({
-            trialType: "generation",
-            model: parsed.data.model ?? undefined,
-            promptSummary: trialPromptSummary(parsed.data.description),
-          });
-        } catch (trialErr) {
-          console.warn("⚠️  TRIAL NOT RECORDED — count is undercounting:", (trialErr as Error).message);
+
+        if (result.status === "ok") {
+          try {
+            await storage.recordTrial({
+              trialType: "generation",
+              model: parsed.data.model ?? undefined,
+              promptSummary: trialPromptSummary(parsed.data.description),
+            });
+          } catch (trialErr) {
+            console.warn("⚠️  TRIAL NOT RECORDED:", (trialErr as Error).message);
+          }
         }
       } catch (error) {
         console.error("Strategy generation error:", error);
-        res
-          .status(500)
-          .json({ error: "Failed to generate strategy", details: (error as Error).message });
+        res.status(500).json({
+          error: "Failed to generate strategy",
+          details: (error as Error).message,
+        });
       }
     }
   );
@@ -291,22 +285,49 @@ export function registerLeanRoutes(app: Express) {
           .status(400)
           .json({ error: "Invalid request", details: parsed.error.errors });
       }
-      const result = await refineStrategy(parsed.data as Parameters<typeof refineStrategy>[0]);
+
+      const { refinementType, strategyId, confirmedOptimization, rationale } = parsed.data;
+
+      if (refinementType === "optimization" && !confirmedOptimization) {
+        const trialData = await storage.getTrialCount(strategyId);
+        return res.json({
+          status: "confirm_optimization",
+          trialCount: trialData.total,
+          warning: `This is an optimization — another look at the same historical data. Each optimization raises the chance that a good backtest result is luck rather than a real edge. This strategy has ${trialData.total} prior trial${trialData.total === 1 ? "" : "s"}.`,
+        });
+      }
+
+      const result = await refineStrategy(
+        parsed.data as Parameters<typeof refineStrategy>[0]
+      );
       res.json(result);
+
+      if (strategyId) {
+        try {
+          await storage.appendRefinementLog(strategyId, {
+            refinementType,
+            rationale,
+          });
+        } catch {
+        }
+      }
+
       try {
         await storage.recordTrial({
           trialType: "refinement",
+          strategyId: strategyId ?? undefined,
           model: parsed.data.model ?? undefined,
-          promptSummary: trialPromptSummary(parsed.data.userFeedback),
+          promptSummary: trialPromptSummary(rationale),
         });
       } catch (trialErr) {
-        console.warn("⚠️  TRIAL NOT RECORDED — count is undercounting:", (trialErr as Error).message);
+        console.warn("⚠️  TRIAL NOT RECORDED:", (trialErr as Error).message);
       }
     } catch (error) {
       console.error("Strategy refinement error:", error);
-      res
-        .status(500)
-        .json({ error: "Failed to refine strategy", details: (error as Error).message });
+      res.status(500).json({
+        error: "Failed to refine strategy",
+        details: (error as Error).message,
+      });
     }
   });
 
@@ -327,9 +348,10 @@ export function registerLeanRoutes(app: Express) {
         res.json({ explanation });
       } catch (error) {
         console.error("Strategy explain error:", error);
-        res
-          .status(500)
-          .json({ error: "Failed to explain strategy", details: (error as Error).message });
+        res.status(500).json({
+          error: "Failed to explain strategy",
+          details: (error as Error).message,
+        });
       }
     }
   );
@@ -356,20 +378,22 @@ export function registerLeanRoutes(app: Express) {
             promptSummary: trialPromptSummary(parsed.data.code),
           });
         } catch (trialErr) {
-          console.warn("⚠️  TRIAL NOT RECORDED — count is undercounting:", (trialErr as Error).message);
+          console.warn("⚠️  TRIAL NOT RECORDED:", (trialErr as Error).message);
         }
       } catch (error) {
         console.error("Strategy optimize error:", error);
-        res
-          .status(500)
-          .json({ error: "Failed to optimize strategy", details: (error as Error).message });
+        res.status(500).json({
+          error: "Failed to optimize strategy",
+          details: (error as Error).message,
+        });
       }
     }
   );
 
   app.get("/api/trials/count", async (req: Request, res: Response) => {
     try {
-      const strategyId = typeof req.query.strategyId === "string" ? req.query.strategyId : undefined;
+      const strategyId =
+        typeof req.query.strategyId === "string" ? req.query.strategyId : undefined;
       const result = await storage.getTrialCount(strategyId);
       res.json(result);
     } catch (error) {

@@ -97,6 +97,31 @@ Strategies (including pipeline state) are stored **in-memory** (MemStorage). All
 - A **"Gate Review" dropdown** on each card provides Pass Gate / Fail Gate / Discard actions that POST to `/api/strategies/:id/gate` and immediately refetch.
 - The dashboard `StrategyList` widget also shows the stage and gate-status badges in compact form.
 
+## AI Strategy Agent — Discipline Guardrails
+
+### Part A: Generation requires a stated edge + agent pushback
+
+Every strategy generation request now requires a **stated edge** (`edge: string`, min 20 chars). The agent critiques the edge before generating any code.
+
+- **`EDGE_CRITIQUE_SYSTEM_PROMPT`** in `lean-agent-prompt.ts`: instructs the model to act as a skeptical trading mentor. It evaluates only the edge the user wrote — it must **never** invent, supply, or strengthen an edge on the user's behalf. Judged on: (1) market mechanism and who persistently loses, (2) falsifiability vs. indicator restatement, (3) specificity.
+- **`assessEdge(edge, description, model)`** in `lean-agent.ts`: calls the LLM, returns `{ verdict: "strong"|"weak"|"none", reasoning, questions }`. Parse failure falls back to `"weak"` rather than crashing.
+- **Gate rule**: if verdict is `"weak"` or `"none"` and `acknowledgeWeakEdge` is not `true`, generation is **blocked** — returns `{ status: "needs_stronger_edge", assessment }` with no code. A strong verdict (or explicit override) proceeds and returns `{ status: "ok", code, …, edgeAssessment }`.
+- `POST /api/lean/agent/generate` with no edge or edge < 20 chars → **400**.
+- Strategy schema carries optional `edge` and `edgeAssessment` fields so the verdict persists when a strategy is saved.
+- **UI** (`StrategyAgent.tsx`): required "What's your edge?" textarea with helper text blocks submit until filled. On `needs_stronger_edge`: shows reasoning + follow-up questions, no code. Two buttons: **"Revise my edge"** (primary) and **"Generate anyway"** (ghost/muted, discouraged override). On success: edge verdict badge shown beside the class name.
+
+### Part B: Gated, logged refinement
+
+The refine flow now **requires a type and rationale** and **gates optimizations** behind an explicit confirmation.
+
+- `POST /api/lean/agent/refine` now requires `refinementType: "logic_fix"|"optimization"` and `rationale: string` (min 15 chars). Missing either → **400**.
+- **Prompt discipline**: the `refineStrategy` function builds type-specific instructions:
+  - `logic_fix`: implement only the stated correction; backtest metrics, if provided, are **context only** — they must not drive parameter changes.
+  - `optimization`: implement only the stated change; explicitly note in the response that this raises overfitting risk; must not free-tune other parameters. Both variants include: "do not silently chase higher returns/Sharpe — only make the change the user articulated."
+- **Optimization confirmation gate** (`routes/lean.ts`): if `refinementType === "optimization"` and `confirmedOptimization` is not `true`, the route returns `{ status: "confirm_optimization", trialCount, warning }` and does **not** refine. The client must re-send with `confirmedOptimization: true`.
+- **Refinement logging**: on a successful refine, if `strategyId` is provided, `storage.appendRefinementLog(strategyId, { refinementType, rationale, at })` appends to `strategy.refinementHistory` — an append-only log of every change and why. The trial counter also fires.
+- **UI** (`StrategyAgent.tsx`): two-card type selector (Logic Fix / Optimization with warning icon) + required rationale textarea. `confirm_optimization` response triggers a blocking warning panel showing trial count; user must click **"I understand — optimize"** (orange, non-default) to proceed.
+
 ## Recent Changes
 
 - **March 15, 2026**: Added three major new features — LEAN Strategy Editor, Monaco Code Editor, and AI Strategy Agent:

@@ -58,6 +58,13 @@ export const gateHistoryEntrySchema = z.object({
 });
 export type GateHistoryEntry = z.infer<typeof gateHistoryEntrySchema>;
 
+export const refinementLogEntrySchema = z.object({
+  refinementType: z.enum(["logic_fix", "optimization"]),
+  rationale: z.string(),
+  at: z.date(),
+});
+export type RefinementLogEntry = z.infer<typeof refinementLogEntrySchema>;
+
 export const strategySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -72,6 +79,9 @@ export const strategySchema = z.object({
   stage: pipelineStageSchema.default("idea"),
   gateStatus: gateStatusSchema.default("in_progress"),
   gateHistory: z.array(gateHistoryEntrySchema).default([]),
+  edge: z.string().optional(),
+  edgeAssessment: z.enum(["strong", "weak", "none"]).optional(),
+  refinementHistory: z.array(refinementLogEntrySchema).default([]),
   createdAt: z.date(),
 });
 

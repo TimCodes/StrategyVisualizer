@@ -1,0 +1,144 @@
+GOAL
+Re-aim the AI agent so it enforces discipline instead of amplifying data-mining bias.
+Two parts:
+  A) Strategy generation must REQUIRE a stated edge (the economic/behavioral reason the
+     strategy should work), and the agent must CRITIQUE that edge and push back when it's
+     weak — rather than cheerfully producing code for any prompt.
+  B) Replace the current "here are your backtest metrics, improve them" refine loop with
+     one that is GATED (requires a stated reason + an explicit refinement type) and LOGGED
+     (visible chain of changes), so optimizing toward past performance is a deliberate,
+     visible act, not an automatic reflex.
+Do ONLY this. Do not build real backtests or new pipeline gates.
+
+CONFIRMED CODEBASE FACTS (verified)
+- packages/server/services/lean-agent.ts:
+  - generateStrategy(request) — request type StrategyGenerationRequest { description,
+    model?, constraints? }. Uses LEAN_AGENT_SYSTEM_PROMPT (pure LEAN API mechanics; no
+    edge concept). No pushback today.
+  - refineStrategy(request) — request type StrategyRefinementRequest { previousCode,
+    userFeedback, backtestResults?, model? }. It injects totalReturn/sharpe/maxDD/winRate
+    into the prompt and asks the model to "refine and improve." THIS is the loop to fix.
+- Route schemas in packages/server/routes/lean.ts: generateStrategySchema (description
+  min 5, constraints, autoBacktest), refineStrategySchema (previousCode, userFeedback,
+  backtestResults, model).
+- System prompt lives in packages/server/services/lean-agent-prompt.ts
+  (LEAN_AGENT_SYSTEM_PROMPT). Keep it; layer discipline ON TOP, don't delete the API rules.
+- Single client caller: packages/client/src/components/strategy-editor/StrategyAgent.tsx.
+- Strategies carry stage/gateStatus/gateHistory (added in the prior task); trials are
+  recorded per generate/refine/optimize (added in the prior task).
+
+============================================================
+PART A — Generation requires a stated edge + agent pushback
+============================================================
+
+TASK A1 — Schema / request shape
+- Add a REQUIRED `edge: z.string().min(20)` field to generateStrategySchema and to
+  StrategyGenerationRequest. Generation without an articulated edge must be rejected (400).
+- Add an optional `acknowledgeWeakEdge: z.boolean().optional()` field (used as an explicit
+  override — see A3).
+- Add to strategySchema (packages/shared/schema.ts) two OPTIONAL fields so the edge persists
+  when a strategy is saved: `edge: z.string().optional()` and
+  `edgeAssessment: z.enum(["strong","weak","none"]).optional()`. Optional-with-no-default
+  so nothing existing breaks.
+
+TASK A2 — Edge critique step (packages/server/services/lean-agent.ts + prompt file)
+- Add a new EDGE_CRITIQUE_SYSTEM_PROMPT in lean-agent-prompt.ts. It must instruct the model
+  to act as a skeptical trading mentor and to evaluate ONLY the edge the user wrote — it
+  must NOT invent, supply, or strengthen an edge on the user's behalf. Criteria to judge:
+    * Does it name a real market mechanism or behavior (who is on the other side of the
+      trade, and why would they persistently lose)?
+    * Is it falsifiable, or just a restated indicator rule ("buy when RSI < 30")?
+    * Is it specific to a market/condition, or vague?
+  It must return STRICT JSON only: { "verdict": "strong" | "weak" | "none",
+    "reasoning": string, "questions": string[] } and nothing else.
+- Add assessEdge(edge, description, model): calls the LLM with that system prompt, parses
+  the JSON (strip ```json fences, try/catch; on parse failure treat verdict as "weak" with
+  a note rather than crashing).
+
+TASK A3 — Gate the generate flow
+- In generateStrategy: first call assessEdge.
+  * If verdict is "weak" or "none" AND acknowledgeWeakEdge is not true: DO NOT generate
+    code. Return { status: "needs_stronger_edge", assessment: { verdict, reasoning,
+    questions } }.
+  * If verdict is "strong", OR acknowledgeWeakEdge === true: proceed to generate as today,
+    and include edge + verdict in the result: { status: "ok", code, explanation, className,
+    edge, edgeAssessment: verdict }.
+- The generate route returns this discriminated result as-is. If the strategy is saved,
+  persist edge + edgeAssessment onto the strategy record.
+
+TASK A4 — Client (StrategyAgent.tsx)
+- Add a required "What's your edge?" textarea above/near the description, with helper text:
+  "Why should this work? Name the market behavior and who's on the other side. 'RSI crossed
+  30' is not an edge." Block submit until it's filled (min length).
+- When the response is { status: "needs_stronger_edge" }: show the critique reasoning and
+  the questions, and DO NOT show generated code. Give the user two clear choices:
+  "Revise my edge" (edit and resubmit) or a secondary, de-emphasized "Generate anyway"
+  button that resubmits with acknowledgeWeakEdge: true. Make "Generate anyway" feel like
+  the discouraged path (smaller, muted), not the default.
+- When { status: "ok" }: show code as today, and display the edge verdict as a badge.
+
+============================================================
+PART B — Gated, logged refinement (kill the auto-optimize loop)
+============================================================
+
+TASK B1 — Schema / request shape
+- Change refineStrategySchema and StrategyRefinementRequest to require:
+    refinementType: z.enum(["logic_fix","optimization"])   // REQUIRED
+    rationale: z.string().min(15)                           // REQUIRED: why this change
+  Keep previousCode, model. Keep backtestResults OPTIONAL but see B2 for how it's used.
+  Keep userFeedback (can be folded into rationale, or keep both — your call, but rationale
+  is required).
+
+TASK B2 — Rewrite the refine prompt (lean-agent.ts refineStrategy)
+- Stop telling the model to "improve" the metrics. Build the prompt around refinementType:
+  * "logic_fix": instruct the model to implement the user's stated logic correction;
+    backtest metrics, if provided, are context ONLY and must NOT drive parameter changes.
+  * "optimization": instruct the model to make the specific change the user described in
+    `rationale`, and to explicitly note in its response that this is an optimization that
+    increases overfitting risk. The model must NOT free-tune additional parameters beyond
+    what the rationale states.
+- In BOTH cases add an explicit instruction: do not silently chase higher returns/Sharpe;
+  only make the change the user articulated. (This neutralizes the old metric-chasing loop.)
+
+TASK B3 — Gate + log it (routes/lean.ts refine route)
+- When refinementType === "optimization": before running, the flow must be deliberate.
+  Return (or require) a confirmation step that surfaces the strategy's CURRENT trial count
+  (from GET /api/trials/count?strategyId=...) and a warning: "This is an optimization.
+  Each one is another look at the data and raises the chance a good backtest is luck. This
+  strategy has N prior trials." Only proceed when the client sends a confirmed flag.
+  (Simplest implementation: add `confirmedOptimization: z.boolean().optional()`; if
+  refinementType is "optimization" and not confirmed, return { status: "confirm_optimization",
+  trialCount, warning } instead of refining.)
+- On a refine that proceeds: append an entry to the strategy's gateHistory (or a dedicated
+  refinement log) capturing { refinementType, rationale, at }. The trial recording from the
+  prior task still fires. Result: the full chain of refinements and WHY is visible.
+
+TASK B4 — Client (StrategyAgent.tsx)
+- The refine UI must require choosing refinementType (Logic fix vs Optimization) and typing
+  a rationale before it can run.
+- If the server returns { status: "confirm_optimization" }: show the warning + the trial
+  count, and require an explicit confirm click (resending confirmedOptimization: true)
+  before anything is generated. Make this a real speed bump, not a pre-checked box.
+
+TASK C — Docs
+- Update replit.md: generation now requires and critiques a stated edge (weak edges are
+  pushed back, overridable only via an explicit, discouraged path); refinement now requires
+  a type + rationale, optimizations require confirmation that surfaces the trial count, and
+  the refinement chain is logged.
+
+ACCEPTANCE CRITERIA
+- POST /api/lean/agent/generate with no edge (or < 20 chars) -> 400.
+- A weak/none edge without acknowledgeWeakEdge -> response { status: "needs_stronger_edge" }
+  with critique + questions, and NO code. With acknowledgeWeakEdge: true -> code is produced
+  and edgeAssessment reflects the weak verdict.
+- A strong edge -> code produced, edge + edgeAssessment returned and persisted on save.
+- The edge critique never fabricates an edge for the user (verify by reading the prompt).
+- POST /api/lean/agent/refine without refinementType or rationale -> 400.
+- refinementType "optimization" without confirmedOptimization -> { status:
+  "confirm_optimization", trialCount, warning }; with confirmedOptimization: true -> refines
+  and logs the rationale to gateHistory.
+- The refine prompt no longer instructs the model to "improve"/maximize metrics (read it).
+- App builds; generation and refinement still work end-to-end through StrategyAgent.tsx.
+
+Show me: the edge-critique prompt, the gated generate flow, the rewritten refine prompt,
+the refine gating logic, and the updated StrategyAgent.tsx UI for both flows.
