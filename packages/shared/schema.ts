@@ -58,6 +58,23 @@ export const gateHistoryEntrySchema = z.object({
 });
 export type GateHistoryEntry = z.infer<typeof gateHistoryEntrySchema>;
 
+export const incubationObservationSchema = z.object({
+  date: z.string(),
+  observedReturn: z.number(),
+  observedDrawdown: z.number(),
+  note: z.string().optional(),
+});
+export type IncubationObservation = z.infer<typeof incubationObservationSchema>;
+
+export const walkForwardConfigSchema = z.object({
+  inSampleDays: z.number().int().positive(),
+  outOfSampleDays: z.number().int().positive(),
+  anchored: z.boolean(),
+  numWindows: z.number().int().positive(),
+  lockedAt: z.date().optional(),
+});
+export type WalkForwardConfig = z.infer<typeof walkForwardConfigSchema>;
+
 export const refinementLogEntrySchema = z.object({
   refinementType: z.enum(["logic_fix", "optimization"]),
   rationale: z.string(),
@@ -82,6 +99,10 @@ export const strategySchema = z.object({
   edge: z.string().optional(),
   edgeAssessment: z.enum(["strong", "weak", "none"]).optional(),
   refinementHistory: z.array(refinementLogEntrySchema).default([]),
+  walkForwardConfig: walkForwardConfigSchema.optional(),
+  incubationStartedAt: z.date().optional(),
+  requiredDays: z.number().optional(),
+  incubationObservations: z.array(incubationObservationSchema).default([]),
   createdAt: z.date(),
 });
 
@@ -392,3 +413,22 @@ export const orderBookSchema = z.object({
 
 export type OrderBookEntry = z.infer<typeof orderBookEntrySchema>;
 export type OrderBook = z.infer<typeof orderBookSchema>;
+
+export const gateResultsTable = pgTable("gate_results", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  strategyId: text("strategy_id").notNull(),
+  gate: text("gate").notNull(),
+  verdict: text("verdict").notNull(),
+  metrics: jsonb("metrics"),
+  dataSource: text("data_source"),
+  reason: text("reason"),
+  computedAt: timestamp("computed_at").notNull().defaultNow(),
+});
+
+export const insertGateResultSchema = createInsertSchema(gateResultsTable).omit({
+  id: true,
+  computedAt: true,
+});
+
+export type GateResult = typeof gateResultsTable.$inferSelect;
+export type InsertGateResult = z.infer<typeof insertGateResultSchema>;

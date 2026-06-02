@@ -1,0 +1,138 @@
+GOAL
+Build the missing pipeline gates and the modern overfitting stats, wired into the existing
+stage/gateStatus model and trial counter. HARD CONSTRAINT: no gate may return "pass" on
+simulated backtest data — every gate checks dataSource and returns "cannot_evaluate" when
+inputs are simulated. This prevents false rigor (real-looking stats computed on random noise).
+
+CONFIRMED CODEBASE FACTS (verified; note prior tasks added fields not in the original clone)
+- Backtest output (packages/shared/schema.ts): leanBacktestsTable / leanBacktestSchema have
+  totalReturn, sharpeRatio, maxDrawdown, winRate, totalTrades, equityCurve (array of
+  {date, value}), rawResults (jsonb, opaque). There is NO structured per-trade P&L list and
+  NO stored per-period returns. Derive period returns by differencing equityCurve values;
+  use a trade list ONLY if one is present inside rawResults.
+- Prior tasks added: dataSource ("simulated"|"live_engine") on backtests; strategy stage /
+  gateStatus / gateHistory + recordGate + POST /api/strategies/:id/gate; a persisted trials
+  table + getTrialCount(strategyId?). USE THESE. PIPELINE_STAGES already includes
+  "walk_forward", "monte_carlo", "incubation".
+- DB pattern: pgTable + createInsertSchema in schema.ts; getDb() with in-memory fallback;
+  `npm run db:push` for migrations.
+
+FOUNDATIONAL (do first) — gate results store + the dataSource guard
+- Add a persisted pgTable "gate_results":
+    id, strategyId text, gate text (one of the PIPELINE_STAGES), verdict text
+    ("pass"|"fail"|"cannot_evaluate"), metrics jsonb, dataSource text, reason text,
+    computedAt timestamp default now.
+  Add insert schema + types + storage methods recordGateResult() and
+  getGateResults(strategyId).
+- Add ONE shared helper assertEvaluable(backtest): if backtest.dataSource !== "live_engine",
+  every gate must short-circuit to verdict "cannot_evaluate" with reason "Inputs are
+  simulated; gate cannot validate a strategy. Connect a real backtest engine first."
+- When a gate computes a real "pass" or "fail" (NOT cannot_evaluate), it must also call the
+  existing recordGate(strategyId, { result }) so the strategy's stage/gateStatus advances
+  through the state machine. cannot_evaluate must NOT advance anything.
+
+=====================================================================
+PHASE A — gates that can be built truthfully now
+=====================================================================
+
+A1) MONTE CARLO + RISK OF RUIN  (stage "monte_carlo")
+- Service computeMonteCarlo(backtest, config): 
+  * Build the return series: prefer a per-trade P&L list from rawResults if present; else
+    period returns from differencing equityCurve.
+  * Bootstrap resample WITH REPLACEMENT, default 2500 iterations (configurable), each
+    rebuilding an equity path; collect distributions of total return, max drawdown, and
+    return/maxDrawdown ratio.
+  * Risk of ruin: given startingCapital and a ruinThreshold (default: drawdown >= 50% of
+    capital, configurable), fraction of iterations that breach it.
+  * PASS criteria (Davey defaults, configurable): median(return/maxDD) > 2.0 AND
+    riskOfRuin < 0.05. Otherwise fail.
+  * Return verdict + metrics { medianReturn, medianMaxDD, medianRetDDRatio, riskOfRuin,
+    percentiles }. Honor assertEvaluable first.
+- Route POST /api/strategies/:id/gates/monte-carlo -> runs it, records gate result, returns it.
+
+A2) DEFLATED SHARPE RATIO  (modern stat; feeds off the trial counter)
+- Service computeDeflatedSharpe(backtest, strategyId):
+  * Implement the Bailey & Lopez de Prado Deflated Sharpe Ratio. Inputs: observed Sharpe,
+    number of returns observations (from equityCurve length), skewness and kurtosis of the
+    return series, and N = number of trials from getTrialCount(strategyId).total (this is
+    the multiple-testing deflation — cite this in a comment). Default to the per-strategy
+    trial count but expose a flag to use the GLOBAL count (the more conservative choice).
+  * Output: DSR as a probability in [0,1]; interpretation field ("DSR > 0.95 suggests the
+    Sharpe is unlikely to be a multiple-testing fluke; below that, treat as likely
+    overfit/luck"). This is a STAT, not a hard gate — surface it, don't auto-fail on it,
+    but include it in the monte_carlo gate's metrics for context.
+  * assertEvaluable first; on simulated data return the number but stamp it
+    notValid: true with the simulated reason.
+  * Write unit tests against at least one known/worked example so the formula is verified.
+
+A3) INCUBATION  (stage "incubation") — immune to the fake-backtest problem
+- This is a forward-observation time gate, not a backtest computation.
+- Add fields/storage to track per strategy: incubationStartedAt, requiredDays (default 90,
+  allow up to 180), and a list of forward observations the user logs during incubation
+  (date, observedReturn, observedDrawdown, note) — paper or live-watch, NOT live trading.
+- Routes: POST .../gates/incubation/start, POST .../gates/incubation/observation,
+  POST .../gates/incubation/evaluate.
+- PASS criteria: requiredDays elapsed AND observed forward performance is broadly
+  consistent with the backtest expectation (e.g., forward drawdown not materially worse
+  than backtest maxDrawdown, forward return not wildly below expectation — use simple,
+  configurable tolerances and require explicit user confirmation rather than pretending
+  precision). Record the gate result.
+
+=====================================================================
+PHASE B — scaffold now; real computation REQUIRES the real backtest engine
+=====================================================================
+These must be BUILT as structure but must return "cannot_evaluate" until real per-window /
+per-slice runs exist (which today they don't). Do not fake them.
+
+B1) WALK-FORWARD  (stage "walk_forward")
+- Add a walk-forward CONFIG (locked before running, to prevent retuning the windows):
+  inSampleDays, outOfSampleDays, anchored (bool), numWindows. Persist it on the strategy;
+  changing it after the fact must append to gateHistory so it's visible.
+- Build the orchestrator interface that WOULD run the strategy per window via the real
+  engine and compute Walk-Forward Efficiency (OOS performance / IS performance) and the
+  stitched OOS curve. Until a real engine exists (dataSource !== "live_engine" or no
+  per-window runner available), return "cannot_evaluate" with reason
+  "Walk-forward requires running the strategy across multiple windows on a real engine."
+- Route POST .../gates/walk-forward.
+
+B2) PROBABILITY OF BACKTEST OVERFITTING (PBO)  (modern stat)
+- Implement the CSCV PBO method (Bailey, Borwein, Lopez de Prado, Zhu): inputs are a MATRIX
+  of M candidate configurations x S time-slices of performance; split into all combinatorial
+  IS/OOS partitions; PBO = frequency with which the IS-best config ranks below the OOS
+  median. Build the function and its tests on a synthetic matrix.
+- BUT the real per-config/per-slice performance matrix requires many real backtest runs,
+  which don't exist yet. So the live route must return "cannot_evaluate" with reason
+  "PBO requires a real performance matrix across configurations and time slices." Keep the
+  computed-on-synthetic-data path only for the unit test.
+
+UI (keep proportional)
+- On the strategy detail / pipeline view, show each gate (walk_forward, monte_carlo,
+  incubation) with its latest verdict from gate_results: pass (green), fail (red),
+  cannot_evaluate (gray, with the reason shown prominently). Surface the Monte Carlo metrics
+  (ret/DD ratio, risk of ruin), the Deflated Sharpe with its interpretation, and the
+  incubation countdown.
+- Anywhere a verdict is cannot_evaluate because of simulated data, show the reason inline so
+  no one mistakes a gray gate for a passed one.
+
+DOCS
+- Update replit.md: gates persist results; NO gate passes on simulated data; Monte Carlo +
+  risk-of-ruin and Deflated Sharpe (deflated by the trial count) and incubation are live;
+  walk-forward and PBO are scaffolded and return cannot_evaluate until a real backtest
+  engine (and real per-window/per-config runs) exist.
+
+ACCEPTANCE CRITERIA
+- `npm run db:push` succeeds (gate_results + any incubation fields).
+- With a simulated backtest, EVERY gate returns "cannot_evaluate" and NONE advances the
+  strategy stage. Verify this explicitly.
+- Monte Carlo: on a live_engine backtest, returns medianRetDD ratio + risk of ruin and a
+  pass/fail against the configurable thresholds; passing calls recordGate and advances stage.
+- Deflated Sharpe: uses getTrialCount as N; unit test against a known example passes;
+  higher trial counts lower the DSR (verify the direction).
+- Incubation: enforces elapsed time + logged observations before it can pass.
+- Walk-forward and PBO: return cannot_evaluate on today's data with the stated reasons; their
+  formulas have passing unit tests on synthetic inputs.
+- App builds and the gate UI renders verdicts with reasons.
+
+Show me: the gate_results store + assertEvaluable guard, the Monte Carlo + risk-of-ruin
+service, the Deflated Sharpe implementation with its test and its use of the trial count,
+the incubation flow, and the cannot_evaluate behavior for walk-forward and PBO.

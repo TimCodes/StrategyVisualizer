@@ -29,6 +29,11 @@ import {
   Trial,
   InsertTrial,
   trialsTable,
+  GateResult,
+  InsertGateResult,
+  gateResultsTable,
+  IncubationObservation,
+  WalkForwardConfig,
 } from "@shared/schema";
 import { getDb } from "./db";
 
@@ -78,6 +83,12 @@ export interface IStorage {
     byType: { generation: number; refinement: number; optimization: number };
   }>;
   getTrials(limit?: number): Promise<Trial[]>;
+
+  recordGateResult(data: InsertGateResult): Promise<GateResult>;
+  getGateResults(strategyId: string): Promise<GateResult[]>;
+  startIncubation(strategyId: string, requiredDays: number): Promise<Strategy>;
+  addIncubationObservation(strategyId: string, obs: IncubationObservation): Promise<Strategy>;
+  updateWalkForwardConfig(strategyId: string, config: WalkForwardConfig): Promise<Strategy>;
 }
 
 export class MemStorage implements IStorage {
@@ -92,6 +103,7 @@ export class MemStorage implements IStorage {
   private leanProjects: Map<string, LeanProject>;
   private leanBacktests: Map<string, LeanBacktest>;
   private trials: Trial[];
+  private gateResults: Map<string, GateResult>;
 
   constructor() {
     this.strategies = new Map();
@@ -103,6 +115,7 @@ export class MemStorage implements IStorage {
     this.leanProjects = new Map();
     this.leanBacktests = new Map();
     this.trials = [];
+    this.gateResults = new Map();
     this.memSettings = {
       id: "default",
       refreshInterval: "30s",
@@ -972,6 +985,106 @@ export class MemStorage implements IStorage {
       promptSummary: row.promptSummary,
       createdAt: row.createdAt,
     };
+  }
+
+  // ─── Gate Results ────────────────────────────────────────────
+
+  async recordGateResult(data: InsertGateResult): Promise<GateResult> {
+    const record: GateResult = {
+      id: randomUUID(),
+      strategyId: data.strategyId,
+      gate: data.gate,
+      verdict: data.verdict,
+      metrics: data.metrics ?? null,
+      dataSource: data.dataSource ?? null,
+      reason: data.reason ?? null,
+      computedAt: new Date(),
+    };
+    this.gateResults.set(record.id, record);
+    try {
+      const db = await getDb();
+      if (db) {
+        const [row] = await db.insert(gateResultsTable).values({
+          strategyId: record.strategyId,
+          gate: record.gate,
+          verdict: record.verdict,
+          metrics: record.metrics,
+          dataSource: record.dataSource,
+          reason: record.reason,
+        }).returning();
+        if (row) {
+          const mapped: GateResult = { ...row, computedAt: row.computedAt };
+          this.gateResults.set(mapped.id, mapped);
+          return mapped;
+        }
+      }
+    } catch {
+      // fall through to in-memory
+    }
+    return record;
+  }
+
+  async getGateResults(strategyId: string): Promise<GateResult[]> {
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(gateResultsTable)
+          .where(eq(gateResultsTable.strategyId, strategyId))
+          .orderBy(desc(gateResultsTable.computedAt));
+        return rows;
+      }
+    } catch {
+      // fall through to in-memory
+    }
+    return Array.from(this.gateResults.values())
+      .filter(r => r.strategyId === strategyId)
+      .sort((a, b) => b.computedAt.getTime() - a.computedAt.getTime());
+  }
+
+  // ─── Incubation ──────────────────────────────────────────────
+
+  async startIncubation(strategyId: string, requiredDays: number): Promise<Strategy> {
+    const existing = this.strategies.get(strategyId);
+    if (!existing) throw new Error("Strategy not found");
+    const updated: Strategy = {
+      ...existing,
+      incubationStartedAt: new Date(),
+      requiredDays,
+      incubationObservations: [],
+    };
+    this.strategies.set(strategyId, updated);
+    return updated;
+  }
+
+  async addIncubationObservation(strategyId: string, obs: IncubationObservation): Promise<Strategy> {
+    const existing = this.strategies.get(strategyId);
+    if (!existing) throw new Error("Strategy not found");
+    const updated: Strategy = {
+      ...existing,
+      incubationObservations: [...(existing.incubationObservations ?? []), obs],
+    };
+    this.strategies.set(strategyId, updated);
+    return updated;
+  }
+
+  // ─── Walk-Forward Config ─────────────────────────────────────
+
+  async updateWalkForwardConfig(strategyId: string, config: WalkForwardConfig): Promise<Strategy> {
+    const existing = this.strategies.get(strategyId);
+    if (!existing) throw new Error("Strategy not found");
+    const entry: GateHistoryEntry = {
+      stage: existing.stage,
+      result: "passed",
+      note: `Walk-forward config updated: ${config.numWindows} windows, IS=${config.inSampleDays}d / OOS=${config.outOfSampleDays}d, anchored=${config.anchored}`,
+      at: new Date(),
+    };
+    const updated: Strategy = {
+      ...existing,
+      walkForwardConfig: { ...config, lockedAt: new Date() },
+      gateHistory: [...existing.gateHistory, entry],
+    };
+    this.strategies.set(strategyId, updated);
+    return updated;
   }
 }
 
