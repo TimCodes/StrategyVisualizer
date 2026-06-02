@@ -14,6 +14,11 @@ import {
 } from "../services/lean-agent";
 import { emitToSocket, getIO } from "../ws";
 
+function trialPromptSummary(s: string | undefined): string | undefined {
+  if (!s) return undefined;
+  return s.slice(0, 200);
+}
+
 const runBacktestBodySchema = z.object({
   code: z.string().min(10),
   socketId: z.string().optional(),
@@ -260,6 +265,15 @@ export function registerLeanRoutes(app: Express) {
 
         const result = await generateStrategy(parsed.data as Parameters<typeof generateStrategy>[0]);
         res.json(result);
+        try {
+          await storage.recordTrial({
+            trialType: "generation",
+            model: parsed.data.model ?? undefined,
+            promptSummary: trialPromptSummary(parsed.data.description),
+          });
+        } catch (trialErr) {
+          console.warn("⚠️  TRIAL NOT RECORDED — count is undercounting:", (trialErr as Error).message);
+        }
       } catch (error) {
         console.error("Strategy generation error:", error);
         res
@@ -279,6 +293,15 @@ export function registerLeanRoutes(app: Express) {
       }
       const result = await refineStrategy(parsed.data as Parameters<typeof refineStrategy>[0]);
       res.json(result);
+      try {
+        await storage.recordTrial({
+          trialType: "refinement",
+          model: parsed.data.model ?? undefined,
+          promptSummary: trialPromptSummary(parsed.data.userFeedback),
+        });
+      } catch (trialErr) {
+        console.warn("⚠️  TRIAL NOT RECORDED — count is undercounting:", (trialErr as Error).message);
+      }
     } catch (error) {
       console.error("Strategy refinement error:", error);
       res
@@ -326,6 +349,15 @@ export function registerLeanRoutes(app: Express) {
           (parsed.data.model as Parameters<typeof suggestOptimizations>[1]) || "gpt-5"
         );
         res.json({ suggestions });
+        try {
+          await storage.recordTrial({
+            trialType: "optimization",
+            model: parsed.data.model ?? undefined,
+            promptSummary: trialPromptSummary(parsed.data.code),
+          });
+        } catch (trialErr) {
+          console.warn("⚠️  TRIAL NOT RECORDED — count is undercounting:", (trialErr as Error).message);
+        }
       } catch (error) {
         console.error("Strategy optimize error:", error);
         res
@@ -334,4 +366,26 @@ export function registerLeanRoutes(app: Express) {
       }
     }
   );
+
+  app.get("/api/trials/count", async (req: Request, res: Response) => {
+    try {
+      const strategyId = typeof req.query.strategyId === "string" ? req.query.strategyId : undefined;
+      const result = await storage.getTrialCount(strategyId);
+      res.json(result);
+    } catch (error) {
+      console.error("Trials count error:", error);
+      res.status(500).json({ error: "Failed to fetch trial count" });
+    }
+  });
+
+  app.get("/api/trials", async (req: Request, res: Response) => {
+    try {
+      const limit = req.query.limit ? Number(req.query.limit) : 50;
+      const trials = await storage.getTrials(limit);
+      res.json(trials);
+    } catch (error) {
+      console.error("Trials list error:", error);
+      res.status(500).json({ error: "Failed to fetch trials" });
+    }
+  });
 }

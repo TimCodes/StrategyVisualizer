@@ -1,0 +1,95 @@
+GOAL
+Add a first-class, persisted "trials" table that records every AI strategy candidate the
+app produces — every generation, every refinement, every optimization. Surface a global
+trial count in the UI. Rationale: once backtests are real, this count is how you judge
+whether a good-looking result is signal or a multiple-comparisons fluke (run ~20 candidates
+and one will look "significant" by chance alone). This is the app's core defense against
+data-mining bias, so the count must be honest and hard to ignore.
+
+CONFIRMED CODEBASE FACTS (verified)
+- DB: Drizzle + Neon serverless Postgres. Tables are defined in packages/shared/schema.ts
+  via pgTable + createInsertSchema (drizzle-zod). See settingsTable, leanProjectsTable,
+  leanBacktestsTable as the pattern to copy.
+- packages/server/db.ts exports getDb() which returns the Drizzle db OR null when
+  DATABASE_URL is unset; storage.ts falls back to in-memory Maps in that case (see how
+  leanBacktests is written to BOTH db and an in-memory Map). Follow this SAME dual pattern.
+- This task DOES require a migration: run `npm run db:push` and report the result.
+- The three AI candidate-producing routes are in packages/server/routes/lean.ts:
+  - POST /api/lean/agent/generate  -> generateStrategy()      => trialType "generation"
+  - POST /api/lean/agent/refine    -> refineStrategy()        => trialType "refinement"
+  - POST /api/lean/agent/optimize  -> suggestOptimizations()  => trialType "optimization"
+  - POST /api/lean/agent/explain   -> DOES NOT count (no new candidate). Leave it alone.
+
+TASK 1 — Schema (packages/shared/schema.ts)
+- Add a pgTable "trials" with columns:
+    id          text primary key (default a uuid),
+    trialType   text not null,          // "generation" | "refinement" | "optimization"
+    strategyId  text,                   // nullable, best-effort link
+    leanProjectName text,               // nullable, best-effort link
+    model       text,                   // nullable, which LLM produced it
+    promptSummary text,                 // nullable, first ~200 chars of the user prompt
+    createdAt   timestamp not null default now()
+- Export trialTypeSchema = z.enum(["generation","refinement","optimization"]).
+- Export insertTrialSchema = createInsertSchema(trialsTable).omit({ id: true, createdAt: true }).
+- Export a Trial type and an InsertTrial type, matching the existing naming style.
+
+TASK 2 — Storage (packages/server/storage.ts)
+- Mirror the leanBacktests dual pattern: a private in-memory trials array used when getDb()
+  is null, and DB reads/writes when it isn't.
+- Add to IStorage and implement:
+    recordTrial(data: InsertTrial): Promise<Trial>     // insert one row
+    getTrialCount(strategyId?: string): Promise<{       // aggregate
+      total: number;
+      byType: { generation: number; refinement: number; optimization: number };
+    }>
+    getTrials(limit?: number): Promise<Trial[]>          // recent first, default 50
+- getTrialCount with no arg = GLOBAL count across all trials. With strategyId = that
+  strategy's count.
+
+TASK 3 — Instrument the three routes (packages/server/routes/lean.ts)
+- After each of generate / refine / optimize returns SUCCESSFULLY (not on error), call
+  storage.recordTrial({ trialType, model: <from req.body if present>, strategyId: <if
+  present in body>, leanProjectName: <if present>, promptSummary: <first 200 chars of the
+  description/prompt field> }).
+- Recording must NOT break the request: wrap recordTrial in try/catch; on failure
+  console.warn a clear, loud message ("TRIAL NOT RECORDED — count is undercounting") but
+  still return the agent result. (The count matters, so failures must be visible in logs,
+  not swallowed silently.)
+- Do not count failed agent calls, and do not count /explain.
+
+TASK 4 — Expose it
+- Add GET /api/trials/count  -> returns getTrialCount() (global). Accept optional
+  ?strategyId= to scope it.
+- Add GET /api/trials -> returns getTrials(limit) for a recent-activity view.
+
+TASK 5 — Surface it in the UI (make it unmissable, not buried)
+- Add a persistent global trial counter in the app header or top of the Overview/dashboard:
+  "Trials run: N". Fetch from /api/trials/count.
+- Add a tooltip / info popover with this meaning (paraphrase, keep it plain):
+  "Each AI generation, refinement, or optimization is another look at the data. The more
+  candidates you try, the more likely a good-looking backtest is luck rather than edge —
+  around 1 in 20 random tries will look 'significant' by chance. This count is how you stay
+  honest about that."
+- Style the number so it reads as meaningful (e.g., amber/red as it climbs is optional but
+  nice). If a strategy detail view exists, show that strategy's own trial count there using
+  ?strategyId=.
+
+TASK 6 — Docs
+- Update replit.md: trials are now persisted in a first-class table; generation, refinement,
+  and optimization each record one trial; global and per-strategy counts are exposed via
+  /api/trials/count and surfaced in the UI; note this feeds the future deflated-Sharpe /
+  overfitting stats.
+
+ACCEPTANCE CRITERIA
+- `npm run db:push` succeeds and creates the trials table.
+- Calling generate, refine, or optimize each inserts exactly one trial row with the correct
+  trialType; explain inserts none; a failed agent call inserts none.
+- GET /api/trials/count returns the correct global total and per-type breakdown, and a
+  correct scoped count when ?strategyId= is passed.
+- The global "Trials run: N" counter is visible in the UI and increments after each
+  generate/refine/optimize.
+- With DATABASE_URL unset, the app still runs and counts via in-memory fallback (resets on
+  restart), matching the existing leanBacktests behavior.
+
+Show me: the trials table definition, the recordTrial/getTrialCount methods, the three
+instrumented call sites, and the UI counter.

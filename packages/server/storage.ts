@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, count } from "drizzle-orm";
 import { 
   Strategy, 
   MarketData, 
@@ -26,6 +26,9 @@ import {
   leanBacktestsTable,
   GateHistoryEntry,
   nextStage,
+  Trial,
+  InsertTrial,
+  trialsTable,
 } from "@shared/schema";
 import { getDb } from "./db";
 
@@ -67,6 +70,13 @@ export interface IStorage {
   createLeanBacktest(data: InsertLeanBacktest): Promise<LeanBacktest>;
   updateLeanBacktest(id: string, data: Partial<InsertLeanBacktest>): Promise<LeanBacktest>;
   getLeanBacktestsByProject(projectId: string): Promise<LeanBacktest[]>;
+
+  recordTrial(data: InsertTrial): Promise<Trial>;
+  getTrialCount(strategyId?: string): Promise<{
+    total: number;
+    byType: { generation: number; refinement: number; optimization: number };
+  }>;
+  getTrials(limit?: number): Promise<Trial[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -80,6 +90,7 @@ export class MemStorage implements IStorage {
   private memSettings: Settings;
   private leanProjects: Map<string, LeanProject>;
   private leanBacktests: Map<string, LeanBacktest>;
+  private trials: Trial[];
 
   constructor() {
     this.strategies = new Map();
@@ -90,6 +101,7 @@ export class MemStorage implements IStorage {
     this.chatMessages = [];
     this.leanProjects = new Map();
     this.leanBacktests = new Map();
+    this.trials = [];
     this.memSettings = {
       id: "default",
       refreshInterval: "30s",
@@ -824,6 +836,89 @@ export class MemStorage implements IStorage {
       rawResults: row.rawResults as LeanBacktest["rawResults"],
       errorLog: row.errorLog ?? null,
       runAt: row.runAt,
+    };
+  }
+
+  async recordTrial(data: InsertTrial): Promise<Trial> {
+    const trial: Trial = {
+      id: randomUUID(),
+      trialType: data.trialType,
+      strategyId: data.strategyId ?? null,
+      leanProjectName: data.leanProjectName ?? null,
+      model: data.model ?? null,
+      promptSummary: data.promptSummary ?? null,
+      createdAt: new Date(),
+    };
+    this.trials.push(trial);
+    try {
+      const db = await getDb();
+      if (db) {
+        await db.insert(trialsTable).values({
+          trialType: trial.trialType,
+          strategyId: trial.strategyId,
+          leanProjectName: trial.leanProjectName,
+          model: trial.model,
+          promptSummary: trial.promptSummary,
+        });
+      }
+    } catch {
+      // DB write failed; in-memory copy already pushed above
+    }
+    return trial;
+  }
+
+  async getTrialCount(strategyId?: string): Promise<{
+    total: number;
+    byType: { generation: number; refinement: number; optimization: number };
+  }> {
+    const byType = { generation: 0, refinement: 0, optimization: 0 };
+    let source: { trialType: string }[] = strategyId
+      ? this.trials.filter((t) => t.strategyId === strategyId)
+      : this.trials;
+    try {
+      const db = await getDb();
+      if (db) {
+        source = strategyId
+          ? await db.select({ trialType: trialsTable.trialType }).from(trialsTable).where(eq(trialsTable.strategyId, strategyId))
+          : await db.select({ trialType: trialsTable.trialType }).from(trialsTable);
+      }
+    } catch {
+      // fall through to in-memory source already set above
+    }
+    for (const r of source) {
+      if (r.trialType === "generation") byType.generation++;
+      else if (r.trialType === "refinement") byType.refinement++;
+      else if (r.trialType === "optimization") byType.optimization++;
+    }
+    return { total: source.length, byType };
+  }
+
+  async getTrials(limit = 50): Promise<Trial[]> {
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(trialsTable)
+          .orderBy(desc(trialsTable.createdAt))
+          .limit(limit);
+        return rows.map((row) => this.mapDbTrial(row));
+      }
+    } catch {
+      // fall through to in-memory
+    }
+    return [...this.trials]
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  }
+
+  private mapDbTrial(row: typeof trialsTable.$inferSelect): Trial {
+    return {
+      id: row.id,
+      trialType: row.trialType,
+      strategyId: row.strategyId,
+      leanProjectName: row.leanProjectName,
+      model: row.model,
+      promptSummary: row.promptSummary,
+      createdAt: row.createdAt,
     };
   }
 }

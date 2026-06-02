@@ -345,6 +345,26 @@ export const leanBacktestsTable = pgTable("lean_backtests", {
   runAt: timestamp("run_at").notNull().defaultNow(),
 });
 
+export const trialsTable = pgTable("trials", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  trialType: text("trial_type").notNull(),
+  strategyId: text("strategy_id"),
+  leanProjectName: text("lean_project_name"),
+  model: text("model"),
+  promptSummary: text("prompt_summary"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const trialTypeSchema = z.enum(["generation", "refinement", "optimization"]);
+export type TrialType = z.infer<typeof trialTypeSchema>;
+
+export const insertTrialSchema = createInsertSchema(trialsTable).omit({
+  id: true,
+  createdAt: true,
+});
+export type Trial = typeof trialsTable.$inferSelect;
+export type InsertTrial = z.infer<typeof insertTrialSchema>;
+
 export const orderBookEntrySchema = z.object({
   price: z.number(),
   quantity: z.number(),
