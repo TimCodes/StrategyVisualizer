@@ -144,6 +144,7 @@ export function registerLeanRoutes(app: Express) {
           equityCurve: [],
           rawResults: {},
           errorLog: null,
+          dataSource: "simulated",
         });
 
         const io = getIO();

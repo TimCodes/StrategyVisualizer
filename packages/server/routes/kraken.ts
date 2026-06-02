@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { getKrakenService } from "../services/exchanges/kraken";
+import { isLiveTradingEnabled, LIVE_TRADING_BLOCKED_MSG } from "../lib/liveTrading";
 
 export function registerKrakenRoutes(app: Express) {
   app.get("/api/kraken/ticker", async (req: Request, res: Response) => {
@@ -107,6 +108,10 @@ export function registerKrakenRoutes(app: Express) {
 
   app.post("/api/kraken/order", async (req: Request, res: Response) => {
     try {
+      if (!isLiveTradingEnabled()) {
+        console.warn("[Kraken] Order placement blocked: LIVE_TRADING_ENABLED is not set.");
+        return res.status(403).json({ error: LIVE_TRADING_BLOCKED_MSG });
+      }
       const apiKey = process.env.KRAKEN_API_KEY;
       const apiSecret = process.env.KRAKEN_API_SECRET;
 

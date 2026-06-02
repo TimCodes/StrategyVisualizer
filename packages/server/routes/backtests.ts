@@ -105,6 +105,7 @@ export function registerBacktestRoutes(app: Express) {
         winRate: Math.round(winRate * 100) / 100,
         totalTrades,
         status: "completed",
+        dataSource: "simulated",
       });
 
       res.status(201).json(backtest);

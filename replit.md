@@ -34,6 +34,32 @@ The workflow runs: `NODE_ENV=development tsx packages/server/index.ts`
 
 Preferred communication style: Simple, everyday language. Direct and focused responses without promotional language or selling.
 
+## Safety Boundaries (Simulated Mode)
+
+### Backtest Data Source Tagging
+- All backtest results carry a `dataSource` field: `"simulated"` | `"live_engine"`, defaulting to `"simulated"`.
+- Both the general backtest schema (`backtestResultSchema`) and LEAN backtest schema (`leanBacktestSchema`) include this field, as does the `lean_backtests` DB table.
+- Every backtest created by the current code paths explicitly sets `dataSource: "simulated"` because both engines (`routes/backtests.ts` POST /api/backtests/run and `routes/lean.ts` LEAN backtest stream) use `Math.random()` internally.
+- When a real backtest engine replaces the simulator, set `dataSource: "live_engine"` at that time — the "Simulated" badges in the UI will disappear automatically for those results.
+
+### Live Trading Guard
+- **`packages/server/lib/liveTrading.ts`** is the single source of truth: `isLiveTradingEnabled()` returns `true` only when env var `LIVE_TRADING_ENABLED=true` or `=1`.
+- **Default is `false` (unset = blocked).** This env var must not be set to `true` until a real backtest engine replaces the simulator.
+- Every real broker order placement is guarded before the exchange call:
+  - `POST /api/ibkr/order` — calls `ibkr.placeOrder()` (IBKR)
+  - `POST /api/kraken/order` — calls `kraken.placeOrder()` via `AddOrder` (Kraken)
+  - `POST /api/trades` — calls `storage.createTrade()` (internal trades)
+  - All return HTTP 403 with `{ error: "Live trading is disabled. Backtests are simulated; live orders are blocked." }` when blocked.
+- Read-only connector operations (balance, positions, market data, order book) are NOT affected.
+
+### System Status Endpoint
+- `GET /api/system/status` returns `{ liveTradingEnabled: boolean, backtestEngine: "simulated" }`.
+- The frontend fetches this on load to drive the persistent warning banner and any UI feature gating.
+
+### UI Indicators
+- A persistent yellow banner is shown at the top of all pages while `liveTradingEnabled` is `false`: *"Simulated mode — backtest results are randomly generated and live trading is disabled."*
+- Every backtest result row/card shows a yellow **Simulated** badge driven by the `dataSource` field.
+
 ## Recent Changes
 
 - **March 15, 2026**: Added three major new features — LEAN Strategy Editor, Monaco Code Editor, and AI Strategy Agent:

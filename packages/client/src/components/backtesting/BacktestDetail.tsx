@@ -13,7 +13,7 @@ import {
   Area,
   AreaChart,
 } from "recharts";
-import { TrendingUp, TrendingDown, Activity, Target, BarChart3, Calendar } from "lucide-react";
+import { TrendingUp, TrendingDown, Activity, Target, BarChart3, Calendar, FlaskConical } from "lucide-react";
 
 interface BacktestDetailProps {
   backtest: BacktestResult;
@@ -93,13 +93,21 @@ export default function BacktestDetail({ backtest }: BacktestDetailProps) {
           <h3 className="text-lg font-semibold text-text-primary">{backtest.strategyName}</h3>
           <p className="text-sm text-text-secondary">{backtest.strategyDescription}</p>
         </div>
-        <Badge className={`${
-          backtest.status === 'completed' ? 'bg-success/20 text-success' :
-          backtest.status === 'running' ? 'bg-warning/20 text-warning' :
-          'bg-danger/20 text-danger'
-        }`}>
-          {backtest.status.charAt(0).toUpperCase() + backtest.status.slice(1)}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {(backtest.dataSource === "simulated" || !backtest.dataSource) && (
+            <Badge className="bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 text-xs gap-1">
+              <FlaskConical className="h-3 w-3" />
+              Simulated
+            </Badge>
+          )}
+          <Badge className={`${
+            backtest.status === 'completed' ? 'bg-success/20 text-success' :
+            backtest.status === 'running' ? 'bg-warning/20 text-warning' :
+            'bg-danger/20 text-danger'
+          }`}>
+            {backtest.status.charAt(0).toUpperCase() + backtest.status.slice(1)}
+          </Badge>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">

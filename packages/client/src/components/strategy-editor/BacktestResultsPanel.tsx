@@ -8,7 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { TrendingUp, TrendingDown, BarChart2, AlertTriangle, Trophy, ArrowUpDown } from "lucide-react";
+import { TrendingUp, TrendingDown, BarChart2, AlertTriangle, Trophy, ArrowUpDown, FlaskConical } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -137,13 +137,19 @@ export function BacktestResultsPanel({
 
         {result && result.status !== "running" && (
           <>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Badge
                 variant={result.status === "completed" ? "default" : "destructive"}
                 className="text-xs"
               >
                 {result.status}
               </Badge>
+              {(result.dataSource === "simulated" || !result.dataSource) && (
+                <Badge className="bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 text-xs gap-1">
+                  <FlaskConical className="h-3 w-3" />
+                  Simulated
+                </Badge>
+              )}
               <span className="text-xs text-muted-foreground">
                 {new Date(result.runAt).toLocaleString()}
               </span>
@@ -278,13 +284,21 @@ export function BacktestResultsPanel({
               key={bt.id}
               className="p-3 rounded-lg bg-card border border-border space-y-1"
             >
-              <div className="flex items-center justify-between">
-                <Badge
-                  variant={bt.status === "completed" ? "default" : "destructive"}
-                  className="text-xs"
-                >
-                  {bt.status}
-                </Badge>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <Badge
+                    variant={bt.status === "completed" ? "default" : "destructive"}
+                    className="text-xs"
+                  >
+                    {bt.status}
+                  </Badge>
+                  {(bt.dataSource === "simulated" || !bt.dataSource) && (
+                    <Badge className="bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 text-xs gap-1">
+                      <FlaskConical className="h-3 w-3" />
+                      Simulated
+                    </Badge>
+                  )}
+                </div>
                 <span className="text-xs text-muted-foreground">
                   {new Date(bt.runAt).toLocaleString()}
                 </span>

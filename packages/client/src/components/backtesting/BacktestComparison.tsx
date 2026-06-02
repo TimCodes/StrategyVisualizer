@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { BacktestResult } from "@shared/schema";
 import {
   BarChart,
@@ -186,8 +187,13 @@ export default function BacktestComparison({ backtests }: BacktestComparisonProp
                   <tr key={b.id} className="border-b border-border/50">
                     <td className="py-2 text-text-primary">
                       <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                         {b.strategyName}
+                        {(b.dataSource === "simulated" || !b.dataSource) && (
+                          <Badge className="bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 text-xs">
+                            Simulated
+                          </Badge>
+                        )}
                       </div>
                     </td>
                     <td className={`py-2 text-right ${b.totalReturn >= 0 ? 'text-success' : 'text-danger'}`}>

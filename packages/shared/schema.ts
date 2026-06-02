@@ -80,6 +80,7 @@ export const backtestResultSchema = z.object({
   winRate: z.number(),
   totalTrades: z.number(),
   status: z.enum(["completed", "running", "failed"]),
+  dataSource: z.enum(["simulated", "live_engine"]).default("simulated"),
   createdAt: z.date(),
 });
 
@@ -267,6 +268,7 @@ export const leanBacktestSchema = z.object({
   equityCurve: z.array(equityCurvePointSchema),
   rawResults: z.record(z.unknown()),
   errorLog: z.string().nullable().optional(),
+  dataSource: z.enum(["simulated", "live_engine"]).default("simulated"),
   runAt: z.date(),
 });
 
@@ -301,6 +303,7 @@ export const leanBacktestsTable = pgTable("lean_backtests", {
   equityCurve: jsonb("equity_curve").notNull().default([]),
   rawResults: jsonb("raw_results").notNull().default({}),
   errorLog: text("error_log"),
+  dataSource: text("data_source").notNull().default("simulated"),
   runAt: timestamp("run_at").notNull().defaultNow(),
 });
 

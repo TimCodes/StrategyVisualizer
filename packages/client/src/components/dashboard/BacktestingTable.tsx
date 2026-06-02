@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Play, BarChart3 } from "lucide-react";
+import { Play, BarChart3, FlaskConical } from "lucide-react";
 import { BacktestResult } from "@shared/schema";
 
 interface BacktestingTableProps {
@@ -172,9 +172,17 @@ export default function BacktestingTable({
                       {result.totalTrades}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <Badge className={`${getStatusColor(result.status)}`}>
-                        {result.status.charAt(0).toUpperCase() + result.status.slice(1)}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge className={`${getStatusColor(result.status)}`}>
+                          {result.status.charAt(0).toUpperCase() + result.status.slice(1)}
+                        </Badge>
+                        {(result.dataSource === "simulated" || !result.dataSource) && (
+                          <Badge className="bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 text-xs gap-1">
+                            <FlaskConical className="h-3 w-3" />
+                            Simulated
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { getIBKRService, IBKRService } from "../services/exchanges/ibkr";
+import { isLiveTradingEnabled, LIVE_TRADING_BLOCKED_MSG } from "../lib/liveTrading";
 
 function getCredentials(): { accessToken: string; accountId: string } | null {
   const accessToken = process.env.IBKR_ACCESS_TOKEN;
@@ -135,6 +136,10 @@ export function registerIBKRRoutes(app: Express) {
 
   app.post("/api/ibkr/order", async (req: Request, res: Response) => {
     try {
+      if (!isLiveTradingEnabled()) {
+        console.warn("[IBKR] Order placement blocked: LIVE_TRADING_ENABLED is not set.");
+        return res.status(403).json({ error: LIVE_TRADING_BLOCKED_MSG });
+      }
       if (!requireCredentials(res)) return;
       const { symbol, action, orderType, quantity, price, tif } = req.body;
 

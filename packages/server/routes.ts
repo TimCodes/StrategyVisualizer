@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { registerStrategyRoutes } from "./routes/strategies";
 import { registerTradeRoutes } from "./routes/trades";
@@ -12,6 +12,7 @@ import { registerKrakenRoutes } from "./routes/kraken";
 import { registerIBKRRoutes } from "./routes/ibkr";
 import { registerLeanRoutes } from "./routes/lean";
 import { initializeWebSocket } from "./ws";
+import { isLiveTradingEnabled } from "./lib/liveTrading";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   registerStrategyRoutes(app);
@@ -25,6 +26,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerKrakenRoutes(app);
   registerIBKRRoutes(app);
   registerLeanRoutes(app);
+
+  app.get("/api/system/status", (_req: Request, res: Response) => {
+    res.json({
+      liveTradingEnabled: isLiveTradingEnabled(),
+      backtestEngine: "simulated",
+    });
+  });
 
   const httpServer = createServer(app);
   
