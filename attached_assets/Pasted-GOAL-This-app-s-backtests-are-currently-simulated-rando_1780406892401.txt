@@ -1,0 +1,76 @@
+GOAL
+This app's backtests are currently simulated (random numbers), but the app also has
+live broker connectors (IBKR, Kraken) and trade execution. I need a hard, unmissable
+boundary so that (a) every simulated result is clearly labeled everywhere it appears,
+and (b) there is NO code path from a simulated backtest result to a real broker order.
+
+Do ONLY this. Do not build a real backtest engine, do not add pipeline gates, do not
+refactor unrelated code.
+
+CONTEXT (already confirmed in the codebase)
+- Both backtest paths return random data:
+  - packages/server/services/lean-agent.ts -> simulateLeanBacktest() uses Math.random()
+  - packages/server/routes/backtests.ts -> POST /api/backtests/run builds a random walk
+- Results are persisted via Drizzle in packages/shared/schema.ts:
+  - leanBacktestsTable / leanBacktestSchema (LEAN backtests)
+  - backtestResultSchema (general backtests)
+- Live trading surface: packages/server/services/exchanges/ibkr.ts and kraken.ts,
+  plus routes/trades.ts, routes/ibkr.ts, routes/kraken.ts.
+- Stack: monorepo (client/server/shared), Zod + drizzle-zod schemas, Postgres via
+  Neon, migrations with `npm run db:push`, Socket.IO for backtest streaming, React/Vite client.
+
+TASK 1 — Tag every backtest result as simulated
+- In packages/shared/schema.ts, add a field `dataSource` of type text with allowed
+  values "simulated" | "live_engine", defaulting to "simulated", to BOTH the LEAN
+  backtests table/schema (leanBacktestsTable + leanBacktestSchema +
+  insertLeanBacktestSchema) and the general backtestResultSchema (and its DB table if
+  one exists; if backtests are in-memory only, add it to the Zod schema and storage type).
+- Update every place that CREATES a backtest to set dataSource: "simulated":
+  - routes/lean.ts (the streamBacktest flow that calls simulateLeanBacktest)
+  - routes/backtests.ts (POST /api/backtests/run)
+- Keep all existing fields and behavior. Run `npm run db:push` and report the result.
+
+TASK 2 — Server-side hard guard on live orders (the real safety item)
+- Add a single source of truth: an env flag LIVE_TRADING_ENABLED, default FALSE.
+  Read it in one small helper (e.g. server/services/risk.ts or a new
+  server/lib/liveTrading.ts) exposing isLiveTradingEnabled(): boolean.
+- Find EVERY place that can place a real broker order (search exchanges/ibkr.ts,
+  exchanges/kraken.ts, routes/trades.ts, routes/ibkr.ts, routes/kraken.ts for order
+  placement: market_order, placeOrder, createOrder, submitOrder, addOrder, etc.).
+- At each such call site, before sending the order, call isLiveTradingEnabled(). If
+  false, do NOT send the order; return HTTP 403 with
+  { error: "Live trading is disabled. Backtests are simulated; live orders are blocked." }
+  and log a warning. This guarantees no simulated result can drive a live order today.
+- Do not change read-only connector behavior (balances, market data, positions view).
+  Only block order PLACEMENT.
+
+TASK 3 — Make it unmissable in the UI
+- Add a persistent app-level banner (in the main layout, near the sidebar/header)
+  that reads: "Simulated mode — backtest results are randomly generated and live
+  trading is disabled." Style it as a warning, always visible while LIVE_TRADING_ENABLED
+  is false. Expose the flag to the client via an existing settings/status endpoint or a
+  new GET /api/system/status returning { liveTradingEnabled, backtestEngine: "simulated" }.
+- Wherever a backtest metric is displayed, show a small "Simulated" badge next to it.
+  At minimum update: components/strategy-editor/BacktestResultsPanel.tsx,
+  components/backtesting/BacktestDetail.tsx, BacktestComparison.tsx, and
+  components/dashboard/BacktestingTable.tsx. Drive the badge off the result's dataSource
+  field so it auto-clears when results become "live_engine" later.
+- If any UI control lets a user act on / deploy / trade a strategy based on a backtest,
+  disable it while liveTradingEnabled is false and show a tooltip explaining why.
+
+TASK 4 — Documentation
+- Update replit.md: note that backtests are simulated, that dataSource tags this,
+  that live orders are blocked behind LIVE_TRADING_ENABLED (default false), and that
+  flipping it on is intentionally a manual step that must not be done until a real
+  backtest engine replaces the simulator.
+
+ACCEPTANCE CRITERIA
+- New backtests are persisted with dataSource: "simulated".
+- With LIVE_TRADING_ENABLED unset or false, any attempt to place a real order returns
+  403 and places nothing; read-only connector features still work.
+- A persistent simulated-mode banner is visible, and every backtest metric shows a
+  "Simulated" badge.
+- `npm run db:push` succeeds; existing strategy/backtest/portfolio pages still load.
+- No real backtest engine, gates, or trial counter were added (those are later steps).
+
+Show me a summary of the files you changed and the exact order-placement call sites you guarded.
