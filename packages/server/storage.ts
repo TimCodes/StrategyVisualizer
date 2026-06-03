@@ -34,6 +34,7 @@ import {
   gateResultsTable,
   IncubationObservation,
   WalkForwardConfig,
+  strategiesTable,
 } from "@shared/schema";
 import { getDb } from "./db";
 
@@ -142,10 +143,11 @@ export class MemStorage implements IStorage {
       volatility: 15.6,
       beta: 0.92,
     };
-    this.seedData();
+    this.seedMapData();
+    this.seedDbIfNeeded().catch(console.error);
   }
 
-  private seedData() {
+  private seedMapData() {
     const strategies: Strategy[] = [
       {
         id: "1",
@@ -336,10 +338,20 @@ export class MemStorage implements IStorage {
   }
 
   async getStrategies(): Promise<Strategy[]> {
+    const db = await getDb().catch(() => null);
+    if (db) {
+      const rows = await db.select().from(strategiesTable).orderBy(strategiesTable.createdAt);
+      return rows.map((r) => this.mapDbStrategy(r));
+    }
     return Array.from(this.strategies.values());
   }
 
   async getStrategyById(id: string): Promise<Strategy | null> {
+    const db = await getDb().catch(() => null);
+    if (db) {
+      const [row] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+      return row ? this.mapDbStrategy(row) : null;
+    }
     return this.strategies.get(id) ?? null;
   }
 
@@ -355,6 +367,14 @@ export class MemStorage implements IStorage {
       refinementHistory: data.refinementHistory ?? [],
       incubationObservations: data.incubationObservations ?? [],
     };
+    const db = await getDb().catch(() => null);
+    if (db) {
+      const [row] = await db
+        .insert(strategiesTable)
+        .values(this.strategyToDbValues(strategy))
+        .returning();
+      return row ? this.mapDbStrategy(row) : strategy;
+    }
     this.strategies.set(id, strategy);
     return strategy;
   }
@@ -363,25 +383,48 @@ export class MemStorage implements IStorage {
     id: string,
     entry: { refinementType: "logic_fix" | "optimization"; rationale: string }
   ): Promise<void> {
+    const newEntry = { refinementType: entry.refinementType, rationale: entry.rationale, at: new Date() };
+    const db = await getDb().catch(() => null);
+    if (db) {
+      const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+      if (!existing) return;
+      const current = this.mapDbStrategy(existing);
+      const updated: Strategy = {
+        ...current,
+        refinementHistory: [...(current.refinementHistory ?? []), newEntry],
+      };
+      await db.update(strategiesTable)
+        .set(this.strategyToDbValues(updated))
+        .where(eq(strategiesTable.id, id));
+      return;
+    }
     const existing = this.strategies.get(id);
     if (!existing) return;
     const updated: Strategy = {
       ...existing,
-      refinementHistory: [
-        ...(existing.refinementHistory ?? []),
-        { refinementType: entry.refinementType, rationale: entry.rationale, at: new Date() },
-      ],
+      refinementHistory: [...(existing.refinementHistory ?? []), newEntry],
     };
     this.strategies.set(id, updated);
   }
 
   async updateStrategy(id: string, data: Partial<InsertStrategy>): Promise<Strategy> {
-    const existing = this.strategies.get(id);
-    if (!existing) {
-      throw new Error("Strategy not found");
-    }
     // Gate transition fields are managed exclusively by recordGate
     const { stage: _s, gateStatus: _gs, gateHistory: _gh, ...safeData } = data as any;
+    const db = await getDb().catch(() => null);
+    if (db) {
+      const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+      if (!existing) throw new Error("Strategy not found");
+      const current = this.mapDbStrategy(existing);
+      const updated: Strategy = { ...current, ...safeData };
+      const [row] = await db
+        .update(strategiesTable)
+        .set(this.strategyToDbValues(updated))
+        .where(eq(strategiesTable.id, id))
+        .returning();
+      return row ? this.mapDbStrategy(row) : updated;
+    }
+    const existing = this.strategies.get(id);
+    if (!existing) throw new Error("Strategy not found");
     const updated: Strategy = { ...existing, ...safeData };
     this.strategies.set(id, updated);
     return updated;
@@ -391,10 +434,39 @@ export class MemStorage implements IStorage {
     id: string,
     params: { result: "passed" | "failed" | "discarded"; note?: string }
   ): Promise<Strategy> {
-    const existing = this.strategies.get(id);
-    if (!existing) {
-      throw new Error("Strategy not found");
+    const db = await getDb().catch(() => null);
+    if (db) {
+      const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+      if (!existing) throw new Error("Strategy not found");
+      const current = this.mapDbStrategy(existing);
+      const entry: GateHistoryEntry = {
+        stage: current.stage,
+        result: params.result,
+        note: params.note,
+        at: new Date(),
+      };
+      const gateHistory = [...current.gateHistory, entry];
+      let stage = current.stage;
+      let gateStatus = current.gateStatus;
+      if (params.result === "passed") {
+        const next = nextStage(current.stage);
+        if (next !== null) { stage = next; gateStatus = "in_progress"; }
+        else { gateStatus = "passed"; }
+      } else if (params.result === "failed") {
+        gateStatus = "failed";
+      } else if (params.result === "discarded") {
+        gateStatus = "discarded";
+      }
+      const updated: Strategy = { ...current, stage, gateStatus, gateHistory };
+      const [row] = await db
+        .update(strategiesTable)
+        .set(this.strategyToDbValues(updated))
+        .where(eq(strategiesTable.id, id))
+        .returning();
+      return row ? this.mapDbStrategy(row) : updated;
     }
+    const existing = this.strategies.get(id);
+    if (!existing) throw new Error("Strategy not found");
     const entry: GateHistoryEntry = {
       stage: existing.stage,
       result: params.result,
@@ -404,30 +476,29 @@ export class MemStorage implements IStorage {
     const gateHistory = [...existing.gateHistory, entry];
     let stage = existing.stage;
     let gateStatus = existing.gateStatus;
-
     if (params.result === "passed") {
       const next = nextStage(existing.stage);
-      if (next !== null) {
-        stage = next;
-        gateStatus = "in_progress";
-      } else {
-        gateStatus = "passed";
-      }
+      if (next !== null) { stage = next; gateStatus = "in_progress"; }
+      else { gateStatus = "passed"; }
     } else if (params.result === "failed") {
       gateStatus = "failed";
     } else if (params.result === "discarded") {
       gateStatus = "discarded";
     }
-
     const updated: Strategy = { ...existing, stage, gateStatus, gateHistory };
     this.strategies.set(id, updated);
     return updated;
   }
 
   async deleteStrategy(id: string): Promise<void> {
-    if (!this.strategies.has(id)) {
-      throw new Error("Strategy not found");
+    const db = await getDb().catch(() => null);
+    if (db) {
+      const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+      if (!existing) throw new Error("Strategy not found");
+      await db.delete(strategiesTable).where(eq(strategiesTable.id, id));
+      return;
     }
+    if (!this.strategies.has(id)) throw new Error("Strategy not found");
     this.strategies.delete(id);
   }
 
@@ -1053,25 +1124,44 @@ export class MemStorage implements IStorage {
   // ─── Incubation ──────────────────────────────────────────────
 
   async startIncubation(strategyId: string, requiredDays: number): Promise<Strategy> {
+    const db = await getDb().catch(() => null);
+    if (db) {
+      const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, strategyId));
+      if (!existing) throw new Error("Strategy not found");
+      const current = this.mapDbStrategy(existing);
+      const updated: Strategy = { ...current, incubationStartedAt: new Date(), requiredDays, incubationObservations: [] };
+      const [row] = await db.update(strategiesTable)
+        .set(this.strategyToDbValues(updated))
+        .where(eq(strategiesTable.id, strategyId))
+        .returning();
+      return row ? this.mapDbStrategy(row) : updated;
+    }
     const existing = this.strategies.get(strategyId);
     if (!existing) throw new Error("Strategy not found");
-    const updated: Strategy = {
-      ...existing,
-      incubationStartedAt: new Date(),
-      requiredDays,
-      incubationObservations: [],
-    };
+    const updated: Strategy = { ...existing, incubationStartedAt: new Date(), requiredDays, incubationObservations: [] };
     this.strategies.set(strategyId, updated);
     return updated;
   }
 
   async addIncubationObservation(strategyId: string, obs: IncubationObservation): Promise<Strategy> {
+    const db = await getDb().catch(() => null);
+    if (db) {
+      const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, strategyId));
+      if (!existing) throw new Error("Strategy not found");
+      const current = this.mapDbStrategy(existing);
+      const updated: Strategy = {
+        ...current,
+        incubationObservations: [...(current.incubationObservations ?? []), obs],
+      };
+      const [row] = await db.update(strategiesTable)
+        .set(this.strategyToDbValues(updated))
+        .where(eq(strategiesTable.id, strategyId))
+        .returning();
+      return row ? this.mapDbStrategy(row) : updated;
+    }
     const existing = this.strategies.get(strategyId);
     if (!existing) throw new Error("Strategy not found");
-    const updated: Strategy = {
-      ...existing,
-      incubationObservations: [...(existing.incubationObservations ?? []), obs],
-    };
+    const updated: Strategy = { ...existing, incubationObservations: [...(existing.incubationObservations ?? []), obs] };
     this.strategies.set(strategyId, updated);
     return updated;
   }
@@ -1079,7 +1169,15 @@ export class MemStorage implements IStorage {
   // ─── Walk-Forward Config ─────────────────────────────────────
 
   async updateWalkForwardConfig(strategyId: string, config: WalkForwardConfig): Promise<Strategy> {
-    const existing = this.strategies.get(strategyId);
+    const db = await getDb().catch(() => null);
+    const getRaw = async () => {
+      if (db) {
+        const [row] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, strategyId));
+        return row ? this.mapDbStrategy(row) : null;
+      }
+      return this.strategies.get(strategyId) ?? null;
+    };
+    const existing = await getRaw();
     if (!existing) throw new Error("Strategy not found");
     const entry: GateHistoryEntry = {
       stage: existing.stage,
@@ -1092,8 +1190,176 @@ export class MemStorage implements IStorage {
       walkForwardConfig: { ...config, lockedAt: new Date() },
       gateHistory: [...existing.gateHistory, entry],
     };
+    if (db) {
+      const [row] = await db.update(strategiesTable)
+        .set(this.strategyToDbValues(updated))
+        .where(eq(strategiesTable.id, strategyId))
+        .returning();
+      return row ? this.mapDbStrategy(row) : updated;
+    }
     this.strategies.set(strategyId, updated);
     return updated;
+  }
+
+  // ─── DB helpers ──────────────────────────────────────────────
+
+  private strategyToDbValues(s: Strategy) {
+    return {
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      type: s.type,
+      status: s.status,
+      performance: s.performance,
+      sharpeRatio: s.sharpeRatio,
+      maxDrawdown: s.maxDrawdown,
+      winRate: s.winRate,
+      totalTrades: s.totalTrades,
+      stage: s.stage,
+      gateStatus: s.gateStatus,
+      gateHistory: (s.gateHistory ?? []).map((e) => ({
+        stage: e.stage,
+        result: e.result,
+        note: e.note,
+        at: e.at instanceof Date ? e.at.toISOString() : e.at,
+      })) as any,
+      refinementHistory: (s.refinementHistory ?? []).map((e) => ({
+        refinementType: e.refinementType,
+        rationale: e.rationale,
+        at: e.at instanceof Date ? e.at.toISOString() : e.at,
+      })) as any,
+      incubationObservations: (s.incubationObservations ?? []) as any,
+      edge: s.edge ?? null,
+      edgeAssessment: s.edgeAssessment ?? null,
+      walkForwardConfig: s.walkForwardConfig
+        ? ({
+            inSampleDays: s.walkForwardConfig.inSampleDays,
+            outOfSampleDays: s.walkForwardConfig.outOfSampleDays,
+            anchored: s.walkForwardConfig.anchored,
+            numWindows: s.walkForwardConfig.numWindows,
+            lockedAt: s.walkForwardConfig.lockedAt instanceof Date
+              ? s.walkForwardConfig.lockedAt.toISOString()
+              : s.walkForwardConfig.lockedAt,
+          } as any)
+        : null,
+      incubationStartedAt: s.incubationStartedAt ?? null,
+      requiredDays: s.requiredDays ?? null,
+    };
+  }
+
+  private mapDbStrategy(row: typeof strategiesTable.$inferSelect): Strategy {
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      type: row.type as Strategy["type"],
+      status: row.status as Strategy["status"],
+      performance: row.performance,
+      sharpeRatio: row.sharpeRatio,
+      maxDrawdown: row.maxDrawdown,
+      winRate: row.winRate,
+      totalTrades: row.totalTrades,
+      stage: row.stage as Strategy["stage"],
+      gateStatus: row.gateStatus as Strategy["gateStatus"],
+      gateHistory: ((row.gateHistory as any[]) ?? []).map((e: any) => ({
+        stage: e.stage,
+        result: e.result,
+        note: e.note,
+        at: new Date(e.at),
+      })),
+      refinementHistory: ((row.refinementHistory as any[]) ?? []).map((e: any) => ({
+        refinementType: e.refinementType,
+        rationale: e.rationale,
+        at: new Date(e.at),
+      })),
+      incubationObservations: ((row.incubationObservations as any[]) ?? []) as IncubationObservation[],
+      edge: row.edge ?? undefined,
+      edgeAssessment: (row.edgeAssessment as Strategy["edgeAssessment"]) ?? undefined,
+      walkForwardConfig: row.walkForwardConfig
+        ? ({
+            inSampleDays: (row.walkForwardConfig as any).inSampleDays,
+            outOfSampleDays: (row.walkForwardConfig as any).outOfSampleDays,
+            anchored: (row.walkForwardConfig as any).anchored,
+            numWindows: (row.walkForwardConfig as any).numWindows,
+            lockedAt: (row.walkForwardConfig as any).lockedAt
+              ? new Date((row.walkForwardConfig as any).lockedAt)
+              : undefined,
+          } as WalkForwardConfig)
+        : undefined,
+      incubationStartedAt: row.incubationStartedAt ? new Date(row.incubationStartedAt) : undefined,
+      requiredDays: row.requiredDays ?? undefined,
+      createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
+    };
+  }
+
+  private async seedDbIfNeeded(): Promise<void> {
+    try {
+      const db = await getDb();
+      if (!db) return;
+      const [{ cnt }] = await db.select({ cnt: count() }).from(strategiesTable);
+      if (cnt > 0) return;
+      const seeds: Strategy[] = [
+        {
+          id: "1",
+          name: "Moving Average Crossover",
+          description: "RSI + MACD signals",
+          type: "trend_following",
+          status: "active",
+          performance: 12.4,
+          sharpeRatio: 1.84,
+          maxDrawdown: -8.32,
+          winRate: 68.4,
+          totalTrades: 247,
+          stage: "live",
+          gateStatus: "passed",
+          gateHistory: [{ stage: "live", result: "passed", at: new Date("2024-01-01") }],
+          refinementHistory: [],
+          incubationObservations: [],
+          createdAt: new Date("2024-01-01"),
+        },
+        {
+          id: "2",
+          name: "Momentum Strategy",
+          description: "Price breakout detection",
+          type: "momentum",
+          status: "active",
+          performance: 8.7,
+          sharpeRatio: 1.42,
+          maxDrawdown: -12.45,
+          winRate: 61.2,
+          totalTrades: 189,
+          stage: "live",
+          gateStatus: "passed",
+          gateHistory: [{ stage: "live", result: "passed", at: new Date("2024-01-15") }],
+          refinementHistory: [],
+          incubationObservations: [],
+          createdAt: new Date("2024-01-15"),
+        },
+        {
+          id: "3",
+          name: "Mean Reversion",
+          description: "Contrarian approach",
+          type: "mean_reversion",
+          status: "paused",
+          performance: -2.1,
+          sharpeRatio: -0.23,
+          maxDrawdown: -18.67,
+          winRate: 45.8,
+          totalTrades: 312,
+          stage: "idea",
+          gateStatus: "in_progress",
+          gateHistory: [],
+          refinementHistory: [],
+          incubationObservations: [],
+          createdAt: new Date("2024-02-01"),
+        },
+      ];
+      for (const s of seeds) {
+        await db.insert(strategiesTable).values(this.strategyToDbValues(s));
+      }
+    } catch {
+      // DB seeding failed; Map is already seeded as fallback
+    }
   }
 }
 

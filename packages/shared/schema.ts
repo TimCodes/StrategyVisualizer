@@ -249,6 +249,30 @@ export const insertStrategySchema = strategySchema.omit({
   createdAt: true 
 });
 
+export const strategiesTable = pgTable("strategies", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  type: text("type").notNull(),
+  status: text("status").notNull(),
+  performance: real("performance").notNull().default(0),
+  sharpeRatio: real("sharpe_ratio").notNull().default(0),
+  maxDrawdown: real("max_drawdown").notNull().default(0),
+  winRate: real("win_rate").notNull().default(0),
+  totalTrades: integer("total_trades").notNull().default(0),
+  stage: text("stage").notNull().default("idea"),
+  gateStatus: text("gate_status").notNull().default("in_progress"),
+  gateHistory: jsonb("gate_history").notNull().default([]),
+  refinementHistory: jsonb("refinement_history").notNull().default([]),
+  incubationObservations: jsonb("incubation_observations").notNull().default([]),
+  edge: text("edge"),
+  edgeAssessment: text("edge_assessment"),
+  walkForwardConfig: jsonb("walk_forward_config"),
+  incubationStartedAt: timestamp("incubation_started_at"),
+  requiredDays: integer("required_days"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const insertTradeSchema = tradeSchema.omit({ 
   id: true,
   pnl: true,

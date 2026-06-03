@@ -1,0 +1,80 @@
+GOAL
+Persist strategies to Postgres so their pipeline state — stage, gateStatus, gateHistory,
+edge, refinementHistory, walkForwardConfig, incubation fields — survives server restarts.
+Today strategies live only in MemStorage (a Map) and reset on restart, while the trial
+counter that references them persists in Postgres; this fixes that mismatch. Persistence
+ONLY — do not change any gate logic, transition rules, or AI behavior.
+
+CONFIRMED CODEBASE FACTS (verified)
+- Strategies are in-memory in packages/server/storage.ts (private strategies: Map). All
+  strategy methods operate on that Map: getStrategies, getStrategyById, createStrategy,
+  updateStrategy, deleteStrategy, recordGate, startIncubation, addIncubationObservation,
+  updateWalkForwardConfig.
+- The DB pattern to MIRROR is the trials table: getDb() returns the Drizzle db or null;
+  recordTrial/getTrials use `const db = await getDb(); if (db) { ...drizzle... }` with a
+  mapDbTrial(row) helper. Tables are pgTable in packages/shared/schema.ts; migrations via
+  `npm run db:push`. getDb is imported in storage.ts already.
+- Strategy fields (strategySchema): id, name, description, type, status, performance,
+  sharpeRatio, maxDrawdown, winRate, totalTrades, stage, gateStatus, gateHistory[],
+  edge?, edgeAssessment?, refinementHistory[], walkForwardConfig?, incubationStartedAt?,
+  requiredDays?, incubationObservations[], createdAt. Several are ARRAYS/OBJECTS containing
+  DATE fields (gateHistory entries, refinementHistory entries, incubationObservations).
+
+TASK 1 — Add the strategies table (packages/shared/schema.ts)
+- Add a pgTable "strategies" with a column per strategy field:
+    id uuid pk defaultRandom; name/description/type/status text notNull;
+    performance/sharpeRatio/maxDrawdown/winRate real notNull default 0;
+    totalTrades integer notNull default 0;
+    stage text notNull default "idea"; gateStatus text notNull default "in_progress";
+    gateHistory jsonb notNull default []; refinementHistory jsonb notNull default [];
+    incubationObservations jsonb notNull default [];
+    edge text (nullable); edgeAssessment text (nullable);
+    walkForwardConfig jsonb (nullable); incubationStartedAt timestamp (nullable);
+    requiredDays integer (nullable);
+    createdAt timestamp notNull defaultNow.
+- Run `npm run db:push` and report the result.
+
+TASK 2 — Migrate the storage methods (packages/server/storage.ts)
+- IMPORTANT design rule (different from trials): strategies are MUTABLE, so do NOT dual-write
+  to both Map and DB (that drifts). Instead, within each method pick ONE source of truth:
+  if `await getDb()` is non-null, read AND write Postgres; only if it's null, use the Map.
+  Read and write the SAME store within a method.
+- Convert each method:
+  * getStrategies / getStrategyById: select from DB (mapped) when db, else Map.
+  * createStrategy: insert into DB (return mapped row) when db, else Map.set. KEEP the
+    existing default-application logic (stage/gateStatus/gateHistory/refinementHistory/
+    incubationObservations defaults) so new rows are well-formed.
+  * updateStrategy, recordGate, startIncubation, addIncubationObservation,
+    updateWalkForwardConfig: these are read-modify-write. Load the current strategy from the
+    active store, apply the SAME changes/transition rules as today (do not alter the logic),
+    then persist: db.update(...).where(eq(strategies.id, id)) when db, else Map.set. Return
+    the updated strategy. Keep "Strategy not found" errors identical.
+  * deleteStrategy: db.delete(...).where(eq(id)) when db, else Map.delete.
+- Add a private mapDbStrategy(row) helper. CRITICAL: jsonb stores dates as ISO strings, so
+  rehydrate Date objects on read — convert the date fields inside gateHistory[],
+  refinementHistory[], and incubationObservations[] back to Date, and ensure
+  incubationStartedAt / createdAt are Date instances. (Timestamp columns come back as Date;
+  the dates nested INSIDE jsonb come back as strings and must be converted, or
+  strategySchema validation and the gate/incubation logic will break.)
+
+TASK 3 — Idempotent seeding
+- The current seed strategies are pushed into the Map at construction. Make seeding
+  idempotent and DB-aware: when db is present, seed the table ONLY if it is empty (insert the
+  seed rows once); never duplicate on restart. When db is null, seed the Map as today.
+- Ensure seed objects include ALL required fields (including incubationObservations: []).
+
+ACCEPTANCE CRITERIA
+- `npm run db:push` succeeds and creates the strategies table.
+- With DATABASE_URL set: create a strategy, advance a gate (recordGate), set an edge, restart
+  the server — the strategy and its stage/gateStatus/gateHistory/edge are STILL there.
+- With DATABASE_URL unset: the app still works using the Map fallback (state resets on
+  restart, as before).
+- No strategy method dual-writes; each uses a single source of truth per call.
+- Dates inside gateHistory / refinementHistory / incubationObservations round-trip correctly
+  (read back as Date, not string) — verify by reading a strategy after a gate transition.
+- Seeding does not create duplicates across restarts when DB is present.
+- Gate logic, transition rules, and AI behavior are unchanged. `npx tsc --noEmit` is clean;
+  `npx vitest run` passes.
+
+Show me: the strategies table, the migrated createStrategy + recordGate + one incubation
+method, the mapDbStrategy helper (with the date rehydration), and the idempotent seeding.
