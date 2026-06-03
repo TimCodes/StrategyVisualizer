@@ -176,9 +176,17 @@ export function computeMonteCarlo(
     passRiskOfRuin = 0.05,
   } = config;
 
-  const returns = buildReturns(backtest.equityCurve);
+  // Prefer per-trade P&L list (Davey-style); fall back to equity-curve returns
+  let returns: number[];
+  if (backtest.trades && backtest.trades.length >= 5) {
+    const startingCapital = backtest.equityCurve[0]?.value ?? 100000;
+    returns = backtest.trades.map((t) => t.profitLoss / startingCapital);
+  } else {
+    returns = buildReturns(backtest.equityCurve);
+  }
+
   if (returns.length < 5) {
-    return { verdict: "cannot_evaluate", reason: "Equity curve too short (< 5 data points) for bootstrapping." };
+    return { verdict: "cannot_evaluate", reason: "Not enough data points for bootstrapping (need ≥ 5 trades or equity curve points)." };
   }
 
   const rng = makePRNG(42);

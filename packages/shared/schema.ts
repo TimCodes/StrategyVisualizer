@@ -325,6 +325,18 @@ export const equityCurvePointSchema = z.object({
   value: z.number(),
 });
 
+export const leanTradeSchema = z.object({
+  entryTime: z.string(),
+  exitTime: z.string(),
+  entryPrice: z.number(),
+  exitPrice: z.number(),
+  quantity: z.number(),
+  direction: z.enum(["long", "short"]),
+  profitLoss: z.number(),
+});
+
+export type LeanTrade = z.infer<typeof leanTradeSchema>;
+
 export const leanBacktestSchema = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -335,6 +347,7 @@ export const leanBacktestSchema = z.object({
   winRate: z.number(),
   totalTrades: z.number(),
   equityCurve: z.array(equityCurvePointSchema),
+  trades: z.array(leanTradeSchema).default([]),
   rawResults: z.record(z.unknown()),
   errorLog: z.string().nullable().optional(),
   dataSource: z.enum(["simulated", "live_engine"]).default("simulated"),
@@ -370,6 +383,7 @@ export const leanBacktestsTable = pgTable("lean_backtests", {
   winRate: real("win_rate").notNull().default(0),
   totalTrades: integer("total_trades").notNull().default(0),
   equityCurve: jsonb("equity_curve").notNull().default([]),
+  trades: jsonb("trades").notNull().default([]),
   rawResults: jsonb("raw_results").notNull().default({}),
   errorLog: text("error_log"),
   dataSource: text("data_source").notNull().default("simulated"),

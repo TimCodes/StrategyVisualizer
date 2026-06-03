@@ -1,0 +1,115 @@
+GOAL
+Wire up the integration code to run REAL backtests via QuantConnect LEAN, but DO NOT set up
+LEAN, Docker, or any market data in this environment. LEAN will be installed and run locally
+later (by a different tool, on the user's machine). Your job is ONLY to write the code that
+WOULD invoke LEAN, parse its output, and store real results — structured so that it stays
+dormant and safe in Replit (where LEAN is absent) and "lights up" once LEAN is available
+locally and an env flag is set.
+
+HARD CONSTRAINTS — read first
+- DO NOT install Docker, the `lean` CLI, Python LEAN, or download any data. DO NOT run a real
+  backtest here. DO NOT add Docker/LEAN to package.json or any setup script.
+- The app MUST keep working in Replit exactly as now: with LEAN disabled, backtests run via
+  the EXISTING simulator and are tagged dataSource "simulated". Do not break or remove the
+  simulator — it becomes the fallback.
+- A backtest may ONLY be tagged dataSource "live_engine" when a REAL LEAN run actually
+  succeeds and is parsed. Never tag simulated output as live_engine. (This keeps the gates
+  honest — they only validate real data.)
+
+CONFIRMED CODEBASE FACTS (verified)
+- The backtest run happens in packages/server/routes/lean.ts, function streamBacktest (~line
+  172), which calls simulateLeanBacktest(code, name) (lean-agent.ts:331) and stores results
+  with dataSource "simulated".
+- leanBacktestsTable (schema.ts:363) has: totalReturn, sharpeRatio, maxDrawdown, winRate,
+  totalTrades, equityCurve (jsonb), rawResults (jsonb), errorLog, dataSource, runAt.
+  There is NO per-trade list yet.
+- Monte Carlo gate computeMonteCarlo (gates.ts:163) currently derives returns from the equity
+  curve because no trade list exists.
+
+TASK 1 — Schema: add a per-trade P&L list
+- Add `trades` jsonb (default []) to leanBacktestsTable AND leanBacktestSchema. Define a
+  leanTradeSchema: { entryTime: string, exitTime: string, entryPrice: number, exitPrice:
+  number, quantity: number, direction: "long"|"short", profitLoss: number }.
+- Run `npm run db:push` and report the result.
+- Update computeMonteCarlo (gates.ts) to PREFER bootstrapping the per-trade profitLoss list
+  from backtest.trades when it is present and non-empty; otherwise keep the existing
+  equity-curve fallback. (Davey-style Monte Carlo resamples trade results.)
+
+TASK 2 — LEAN runner service (the call wiring; dormant in Replit)
+- Create packages/server/services/lean-runner.ts exporting:
+  * isLeanAvailable(): boolean — returns true ONLY if process.env.LEAN_ENABLED === "true".
+    (In Replit it's unset, so this is false and nothing below ever executes.)
+  * class LeanUnavailableError and class LeanRunError (typed errors for the caller to catch).
+  * async runLeanBacktest({ projectName, code }): Promise<ParsedLeanResult>
+    Steps (all behind isLeanAvailable(); if not available, throw LeanUnavailableError before
+    doing anything):
+      1. Ensure the LEAN workspace project dir exists at
+         `${process.env.LEAN_WORKSPACE_DIR}/${projectName}` and write `code` to its main.py.
+      2. Spawn the backtest command via child_process. Make it fully configurable by env, do
+         NOT hardcode docker: command = process.env.LEAN_COMMAND ?? "lean", args ["backtest",
+         projectName]; cwd = LEAN_WORKSPACE_DIR; timeout = LEAN_BACKTEST_TIMEOUT_MS ?? 600000.
+         Capture stdout/stderr.
+      3. Locate the newest results JSON under the project's `backtests/<id>/` output dir,
+         read it, and pass to parseLeanResults (Task 3).
+      4. Return the parsed result with dataSource "live_engine".
+    On ANY failure (spawn error, non-zero exit, timeout, missing/!parseable output): throw
+    LeanRunError with the captured stderr so the caller can fall back. NEVER return partial
+    or fabricated numbers.
+
+TASK 3 — Result parser (verifiable now via a fixture; exact keys confirmed locally later)
+- In lean-runner.ts add parseLeanResults(raw: any): ParsedLeanResult. Map LEAN's backtest
+  results JSON to our schema, defensively (values may be strings with % or $; keys vary by
+  LEAN version):
+    * statistics -> totalReturn (Net Profit / Compounding Annual Return), sharpeRatio
+      (Sharpe Ratio), maxDrawdown (Drawdown), winRate (Win Rate), totalTrades (Total
+      Orders/Trades). Strip %, $, commas; coerce to number; default 0 if absent.
+    * equityCurve from Charts -> "Strategy Equity" -> Series -> "Equity" -> Values
+      (array of {x: unix seconds, y: value}) -> [{date: ISO, value}].
+    * trades from TotalPerformance -> ClosedTrades -> map to leanTradeSchema.
+    * keep the full original object in rawResults.
+  Mark with clear `// TODO(local): verify key path against a real LEAN results sample` comments
+  at each mapping, since exact keys will be confirmed against a real run locally.
+- Commit a small sample LEAN results JSON as a test fixture
+  (packages/server/services/__tests__/fixtures/lean-sample.json) representing the documented
+  structure, and write a vitest that asserts parseLeanResults(fixture) yields correct stats,
+  a non-empty equityCurve, and a non-empty trades array. (This verifies the parser WITHOUT
+  needing LEAN installed.)
+
+TASK 4 — Wire into the route (try real, fall back to simulator)
+- In routes/lean.ts streamBacktest (~172): if isLeanAvailable(), wrap a call to
+  runLeanBacktest({ projectName: name, code }) in try/catch:
+    * success -> store the parsed result with dataSource "live_engine" (include trades).
+    * caught error -> console.warn the reason and FALL BACK to simulateLeanBacktest tagged
+      "simulated", exactly as today.
+  If !isLeanAvailable() -> simulator path unchanged.
+- Keep the existing Socket.IO streaming and recordTrial behavior. For a real run, it's fine
+  to stream a simple "Running LEAN backtest…" status then emit the final parsed results;
+  full live log-tailing can be a later refinement (do not over-build it now).
+
+TASK 5 — Config + handoff doc (the deferred local work)
+- Add to .env.example with safe defaults + comments:
+    LEAN_ENABLED=false
+    LEAN_COMMAND=lean
+    LEAN_WORKSPACE_DIR=./lean-workspace
+    LEAN_BACKTEST_TIMEOUT_MS=600000
+- Create LEAN_SETUP.md describing the LOCAL steps to be done later by Claude Code (NOT now):
+  install Docker; `pip install lean`; `lean init` a workspace; configure data; set the env
+  vars above (LEAN_ENABLED=true on the local machine only); run one backtest; paste a real
+  results JSON so the parser TODO key-paths can be verified and the fixture updated. State
+  clearly that until those steps are done, LEAN_ENABLED stays false and the app uses the
+  simulator.
+
+ACCEPTANCE CRITERIA
+- With LEAN_ENABLED unset/false (i.e., here in Replit): backtests still run via the simulator,
+  tagged "simulated"; the app builds and runs; nothing attempts to spawn Docker or `lean`.
+- runLeanBacktest throws LeanUnavailableError when LEAN_ENABLED !== "true", before any spawn.
+- parseLeanResults has a passing vitest against the committed fixture (stats + equityCurve +
+  trades).
+- The route uses the real runner ONLY when enabled and falls back to the simulator on any
+  error; live_engine is never applied to simulated output.
+- `trades` persists; computeMonteCarlo uses it when present (existing gate tests still pass).
+- `npx tsc --noEmit` is clean; `npx vitest run` passes.
+- LEAN_SETUP.md exists and clearly defers all Docker/LEAN/data setup to the local step.
+
+Show me: lean-runner.ts (isLeanAvailable, runLeanBacktest, parseLeanResults), the fixture +
+parser test, the route fallback wiring, the new trades field, and LEAN_SETUP.md.

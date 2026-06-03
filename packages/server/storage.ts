@@ -905,6 +905,7 @@ export class MemStorage implements IStorage {
       winRate: row.winRate,
       totalTrades: row.totalTrades,
       equityCurve: row.equityCurve as LeanBacktest["equityCurve"],
+      trades: (row.trades as LeanBacktest["trades"]) ?? [],
       rawResults: row.rawResults as LeanBacktest["rawResults"],
       dataSource: (row.dataSource as "simulated" | "live_engine") ?? "simulated",
       errorLog: row.errorLog ?? null,

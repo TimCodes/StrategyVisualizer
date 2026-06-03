@@ -12,6 +12,7 @@ import {
   suggestOptimizations,
   simulateLeanBacktest,
 } from "../services/lean-agent";
+import { isLeanAvailable, runLeanBacktest } from "../services/lean-runner";
 import { emitToSocket, getIO } from "../ws";
 
 function trialPromptSummary(s: string | undefined): string | undefined {
@@ -150,6 +151,7 @@ export function registerLeanRoutes(app: Express) {
           winRate: 0,
           totalTrades: 0,
           equityCurve: [],
+          trades: [],
           rawResults: {},
           errorLog: null,
           dataSource: "simulated",
@@ -171,6 +173,38 @@ export function registerLeanRoutes(app: Express) {
 
         const streamBacktest = async () => {
           try {
+            // Try real LEAN runner first (only active when LEAN_ENABLED=true)
+            if (isLeanAvailable()) {
+              try {
+                emitLog("[LEAN] Starting real LEAN backtest…");
+                emitEvent("lean:backtest:progress", { progress: 10 });
+                const leanResult = await runLeanBacktest({ projectName: name, code });
+                emitEvent("lean:backtest:progress", { progress: 100 });
+                const updatedBacktest = await storage.updateLeanBacktest(backtest.id, {
+                  status: "completed",
+                  totalReturn: leanResult.totalReturn,
+                  sharpeRatio: leanResult.sharpeRatio,
+                  maxDrawdown: leanResult.maxDrawdown,
+                  winRate: leanResult.winRate,
+                  totalTrades: leanResult.totalTrades,
+                  equityCurve: leanResult.equityCurve,
+                  trades: leanResult.trades,
+                  rawResults: leanResult.rawResults,
+                  dataSource: "live_engine",
+                });
+                await storage.updateLeanProjectLastBacktest(name, backtest.id);
+                emitEvent("lean:backtest:complete", updatedBacktest);
+                return;
+              } catch (leanErr) {
+                console.warn(
+                  "[LEAN] Real runner failed, falling back to simulator:",
+                  (leanErr as Error).message
+                );
+                emitLog(`[LEAN] Runner error: ${(leanErr as Error).message} — falling back to simulator`);
+              }
+            }
+
+            // Simulator path (default in Replit; fallback when LEAN fails)
             const results = simulateLeanBacktest(code, name);
             for (let i = 0; i < results.logs.length; i++) {
               await new Promise((r) => setTimeout(r, 150));
@@ -187,6 +221,7 @@ export function registerLeanRoutes(app: Express) {
               winRate: results.winRate,
               totalTrades: results.totalTrades,
               equityCurve: results.equityCurve,
+              trades: [],
               rawResults: results,
             });
             await storage.updateLeanProjectLastBacktest(name, backtest.id);

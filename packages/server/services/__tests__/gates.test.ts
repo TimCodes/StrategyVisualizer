@@ -27,6 +27,7 @@ function makeBacktest(overrides: Partial<LeanBacktest> = {}): LeanBacktest {
     winRate: 0.6,
     totalTrades: 10,
     equityCurve: curve,
+    trades: [],
     rawResults: {},
     dataSource: "live_engine",
     runAt: new Date(),

@@ -1,0 +1,59 @@
+{
+  "Statistics": {
+    "Net Profit": "24.67%",
+    "Compounding Annual Return": "24.67%",
+    "Sharpe Ratio": "1.84",
+    "Drawdown": "8.32%",
+    "Win Rate": "68.4%",
+    "Total Orders": "247",
+    "Total Trades": "247",
+    "Average Win": "2.1%",
+    "Average Loss": "-1.3%"
+  },
+  "Charts": {
+    "Strategy Equity": {
+      "Series": {
+        "Equity": {
+          "Values": [
+            { "x": 1672531200, "y": 100000 },
+            { "x": 1672617600, "y": 101200 },
+            { "x": 1672704000, "y": 100800 },
+            { "x": 1672790400, "y": 102500 },
+            { "x": 1672876800, "y": 103100 }
+          ]
+        }
+      }
+    }
+  },
+  "TotalPerformance": {
+    "ClosedTrades": [
+      {
+        "EntryTime": "2023-01-02T09:30:00",
+        "ExitTime": "2023-01-03T16:00:00",
+        "EntryPrice": 130.5,
+        "ExitPrice": 133.2,
+        "Quantity": 100,
+        "Direction": "Long",
+        "ProfitLoss": 270.0
+      },
+      {
+        "EntryTime": "2023-01-04T09:30:00",
+        "ExitTime": "2023-01-05T16:00:00",
+        "EntryPrice": 133.8,
+        "ExitPrice": 132.1,
+        "Quantity": 100,
+        "Direction": "Long",
+        "ProfitLoss": -170.0
+      },
+      {
+        "EntryTime": "2023-01-06T09:30:00",
+        "ExitTime": "2023-01-09T16:00:00",
+        "EntryPrice": 132.5,
+        "ExitPrice": 136.0,
+        "Quantity": 150,
+        "Direction": "Long",
+        "ProfitLoss": 525.0
+      }
+    ]
+  }
+}
