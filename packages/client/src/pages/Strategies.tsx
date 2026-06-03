@@ -29,12 +29,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Play, Pause, Settings, Trash2, ChevronDown, CheckCircle2, XCircle, Archive } from "lucide-react";
+import { Plus, Play, Pause, Settings, Trash2, ChevronDown, ChevronUp, CheckCircle2, XCircle, Archive, Info, AlertTriangle } from "lucide-react";
 import { TradingService } from "@/services/tradingServices";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import StrategyForm from "@/components/strategies/StrategyForm";
 import GatePipelinePanel from "@/components/strategies/GatePipelinePanel";
+import { StageStepper, StageStepperCompact } from "@/components/strategies/StageStepper";
 import { Strategy, InsertStrategy, PipelineStage, GateStatus } from "@shared/schema";
 
 const STAGE_LABELS: Record<PipelineStage, string> = {
@@ -68,17 +69,41 @@ function getGateStatusConfig(status: GateStatus) {
   }
 }
 
+function edgeAssessmentClass(verdict: "strong" | "weak" | "none"): string {
+  if (verdict === "strong") return "gap-1 bg-green-500/20 text-green-400 border-green-500/30 text-xs";
+  if (verdict === "weak") return "gap-1 bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs";
+  return "gap-1 bg-red-500/20 text-red-400 border-red-500/30 text-xs";
+}
+
+function formatAt(at: Date | string): string {
+  return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 export default function Strategies() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStrategy, setEditingStrategy] = useState<Strategy | null>(null);
   const [deletingStrategy, setDeletingStrategy] = useState<Strategy | null>(null);
+  const [expandedPipeline, setExpandedPipeline] = useState<Set<string>>(new Set());
 
   const { data: strategies, isLoading } = useQuery({
     queryKey: ["strategies"],
     queryFn: TradingService.getStrategies,
   });
+
+  const { data: systemStatus } = useQuery<{ liveTradingEnabled: boolean; backtestEngine: string }>({
+    queryKey: ["/api/system/status"],
+  });
+  const isSimulated = !systemStatus || systemStatus.backtestEngine === "simulated";
+
+  const togglePipeline = (id: string) => {
+    setExpandedPipeline((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<InsertStrategy> }) =>
@@ -280,13 +305,8 @@ export default function Strategies() {
                     </Badge>
                   </div>
 
-                  <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    <Badge className={`text-xs font-medium ${getStageBadgeClass(strategy.stage)}`}>
-                      {STAGE_LABELS[strategy.stage]}
-                    </Badge>
-                    <Badge className={`text-xs ${gateConfig.className}`}>
-                      {gateConfig.label}
-                    </Badge>
+                  <div className="mt-2">
+                    <StageStepperCompact strategy={strategy} />
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -407,8 +427,111 @@ export default function Strategies() {
                       </DropdownMenuContent>
                     </DropdownMenu>
 
-                    <div className="border-t border-border pt-3">
-                      <GatePipelinePanel strategyId={strategy.id} />
+                    <div className="border-t border-border pt-2">
+                      <button
+                        className="w-full flex items-center justify-between text-xs text-text-secondary hover:text-text-primary transition-colors py-1.5 px-0"
+                        onClick={() => togglePipeline(strategy.id)}
+                      >
+                        <span className="font-medium">Pipeline & Analysis</span>
+                        {expandedPipeline.has(strategy.id) ? (
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+
+                      {expandedPipeline.has(strategy.id) && (
+                        <div className="mt-2 space-y-4">
+                          {isSimulated && (
+                            <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/25 text-blue-400 text-xs leading-relaxed">
+                              <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                Gates can't validate this strategy yet because backtests are simulated.
+                                Connect a real backtest engine to evaluate it.
+                              </span>
+                            </div>
+                          )}
+
+                          <div>
+                            <p className="text-[10px] font-medium text-text-secondary uppercase tracking-wide mb-2">Stage Journey</p>
+                            <StageStepper strategy={strategy} />
+                          </div>
+
+                          <div className="border-t border-border pt-3">
+                            <p className="text-[10px] font-medium text-text-secondary uppercase tracking-wide mb-1.5">Stated Edge</p>
+                            {strategy.edge ? (
+                              <div className="space-y-1.5">
+                                <p className="text-xs text-text-primary leading-relaxed">{strategy.edge}</p>
+                                {strategy.edgeAssessment && (
+                                  <Badge className={edgeAssessmentClass(strategy.edgeAssessment)}>
+                                    {strategy.edgeAssessment === "strong" && <CheckCircle2 className="h-3 w-3" />}
+                                    {strategy.edgeAssessment === "weak" && <AlertTriangle className="h-3 w-3" />}
+                                    {strategy.edgeAssessment === "none" && <XCircle className="h-3 w-3" />}
+                                    {strategy.edgeAssessment.charAt(0).toUpperCase() + strategy.edgeAssessment.slice(1)} edge
+                                  </Badge>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-text-secondary italic">
+                                No edge recorded — edge must be stated before AI generation.
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="border-t border-border pt-3">
+                            {(() => {
+                              const history = strategy.refinementHistory ?? [];
+                              const optCount = history.filter((e) => e.refinementType === "optimization").length;
+                              return (
+                                <>
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <p className="text-[10px] font-medium text-text-secondary uppercase tracking-wide">Refinement History</p>
+                                    {optCount > 0 && (
+                                      <Badge className="gap-1 bg-amber-500/15 text-amber-400 border-amber-500/30 text-[10px]">
+                                        <AlertTriangle className="h-2.5 w-2.5" />
+                                        {optCount} optimization{optCount !== 1 ? "s" : ""}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {history.length === 0 ? (
+                                    <p className="text-xs text-text-secondary italic">No refinements yet.</p>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      {[...history].reverse().map((entry, ei) => (
+                                        <div key={ei} className="flex items-start gap-2 text-xs">
+                                          <Badge
+                                            className={
+                                              entry.refinementType === "optimization"
+                                                ? "shrink-0 bg-amber-500/15 text-amber-400 border-amber-500/30 text-[10px]"
+                                                : "shrink-0 bg-border text-text-secondary border-border text-[10px]"
+                                            }
+                                          >
+                                            {entry.refinementType === "optimization" ? "Optimization" : "Logic fix"}
+                                          </Badge>
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-text-primary leading-snug">{entry.rationale}</p>
+                                            <p className="text-text-secondary text-[10px] mt-0.5">{formatAt(entry.at)}</p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+
+                          <div className="border-t border-border pt-3">
+                            <GatePipelinePanel strategyId={strategy.id} />
+                          </div>
+                        </div>
+                      )}
+
+                      {!expandedPipeline.has(strategy.id) && (
+                        <div className="pt-1">
+                          <GatePipelinePanel strategyId={strategy.id} />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>

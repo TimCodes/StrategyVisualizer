@@ -1,0 +1,84 @@
+GOAL
+Complete the "pipeline as a visible journey" UI. Most of it EXISTS — do not rebuild it.
+GatePipelinePanel.tsx already handles per-gate verdicts, Monte Carlo metrics, the DSR bar,
+incubation, and walk-forward cannot_evaluate. App.tsx already shows a global "Trials run"
+counter. The gaps are journey-level: a strategy's stage progression, its stated edge, its
+refinement chain, and a clear explanation of why gates are inert in simulated mode. This is
+FRONTEND ONLY — every field needed is already on the strategy object from
+GET /api/strategies; no new endpoints, no backend changes, no db:push.
+
+CONFIRMED CODEBASE FACTS (verified)
+- Client: wouter routing, @tanstack/react-query, shadcn/ui + Tailwind (tokens like
+  text-text-primary, text-text-secondary, surface-raised, bg-primary). apiRequest in
+  lib/queryClient.ts.
+- pages/Strategies.tsx lists strategies; each card shows the stage as a SINGLE badge
+  (STAGE_LABELS + getStageBadgeClass) and embeds <GatePipelinePanel strategyId={...}>.
+- PIPELINE_STAGES (ordered) and STAGE_LABELS exist (shared schema + Strategies.tsx).
+- The strategy object already carries: stage, gateStatus, gateHistory[] (each entry has
+  stage, result "passed"|"failed"|"discarded", note?, at), edge?, edgeAssessment?
+  ("strong"|"weak"|"none"), refinementHistory[] (each entry has refinementType
+  "logic_fix"|"optimization", rationale, at). USE THESE — they're returned already.
+- The edge assessment color convention lives in StrategyAgent.tsx — reuse it for consistency.
+
+TASK 1 — Stage journey stepper (the core gap)
+- Create components/strategies/StageStepper.tsx that renders ALL of PIPELINE_STAGES as an
+  ordered horizontal stepper (wraps on mobile), given a strategy. For each stage:
+  * stages BEFORE the current stage that have a "passed" entry in gateHistory -> green check
+  * a stage with a "failed" entry and no later pass -> red / failed
+  * a stage with a "discarded" entry -> gray, struck-through
+  * the CURRENT stage (strategy.stage) -> highlighted/active, with the gateStatus shown
+    (in_progress / passed / failed / discarded)
+  * stages after current -> muted "upcoming"
+  Use STAGE_LABELS for names and lucide icons consistent with GatePipelinePanel
+  (CheckCircle2 / XCircle / etc.). Keep it compact.
+- Render StageStepper at the top of each strategy's expanded section in Strategies.tsx
+  (above GatePipelinePanel), and a condensed version (current stage + small progress dots)
+  on the collapsed card so progress is visible without expanding. Keep the existing badge or
+  fold it into the stepper — your call, but don't duplicate it.
+
+TASK 2 — Surface the stated edge + assessment
+- In the expanded strategy section, add an "Edge" block showing strategy.edge and an
+  assessment badge for strategy.edgeAssessment (strong = green, weak = amber, none = red),
+  reusing the color convention from StrategyAgent.tsx.
+- If edge is empty (older strategies), show a muted "No edge recorded" note rather than
+  hiding the block — the absence is itself meaningful per the discipline.
+
+TASK 3 — Refinement history (make optimization visible)
+- In the expanded section, add a "Refinement history" list from strategy.refinementHistory,
+  newest first: each row shows the refinementType (badge: "Logic fix" neutral vs
+  "Optimization" amber), the rationale text, and the timestamp.
+- Above the list show a small count: "N optimizations on this strategy" (count entries with
+  refinementType "optimization"), so the curve-fitting exposure is legible at a glance.
+
+TASK 4 — Journey-level "why are gates inert" explainer
+- When the strategy's gate results are all cannot_evaluate / no live_engine backtest exists,
+  show ONE clear, non-alarming info banner at the top of the expanded section:
+  "Gates can't validate this strategy yet because backtests are simulated. Connect a real
+  backtest engine to evaluate it." This prevents users reading the gray gates as broken.
+  Drive it off the existing data (e.g., no gate result has verdict "pass"/"fail", or the
+  system status / dataSource already exposed). Do not invent a new endpoint if the info is
+  already available client-side.
+
+TASK 5 — Verify the global counter's explanation
+- Confirm the App.tsx "Trials run" counter has a tooltip/popover explaining what it means
+  (each AI generation/refine/optimize is another look at the data; ~1 in 20 random tries
+  looks "significant" by chance). If it lacks the explanation, add a concise tooltip. Do not
+  change the count logic.
+
+CONSTRAINTS
+- Do NOT rebuild GatePipelinePanel, the gate mutations, the DSR bar, MC metrics, or the
+  global counter — only add the new pieces and place them around the existing panel.
+- Match the existing shadcn/Tailwind tokens and lucide icon style. Keep it responsive.
+
+ACCEPTANCE CRITERIA
+- Each strategy shows a full 7-stage stepper with the current position and correct
+  passed/failed/discarded/upcoming states derived from gateHistory + stage + gateStatus.
+- The stated edge + assessment badge and the refinement history (with optimization count)
+  are visible on the strategy.
+- A clear, non-alarming banner explains the inert gates in simulated mode.
+- The global "Trials run" counter has an explanatory tooltip.
+- No backend/endpoint/schema changes. `npx tsc --noEmit` clean; `npx vitest run` passes;
+  the app builds and the Strategies page renders.
+
+Show me the StageStepper component, the edge + refinement-history additions in Strategies.tsx,
+and the simulated-mode banner.

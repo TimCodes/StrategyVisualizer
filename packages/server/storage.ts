@@ -338,19 +338,27 @@ export class MemStorage implements IStorage {
   }
 
   async getStrategies(): Promise<Strategy[]> {
-    const db = await getDb().catch(() => null);
-    if (db) {
-      const rows = await db.select().from(strategiesTable).orderBy(strategiesTable.createdAt);
-      return rows.map((r) => this.mapDbStrategy(r));
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(strategiesTable).orderBy(strategiesTable.createdAt);
+        return rows.map((r) => this.mapDbStrategy(r));
+      }
+    } catch {
+      // DB unavailable — fall through to Map
     }
     return Array.from(this.strategies.values());
   }
 
   async getStrategyById(id: string): Promise<Strategy | null> {
-    const db = await getDb().catch(() => null);
-    if (db) {
-      const [row] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
-      return row ? this.mapDbStrategy(row) : null;
+    try {
+      const db = await getDb();
+      if (db) {
+        const [row] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+        return row ? this.mapDbStrategy(row) : null;
+      }
+    } catch {
+      // DB unavailable — fall through to Map
     }
     return this.strategies.get(id) ?? null;
   }
@@ -367,13 +375,17 @@ export class MemStorage implements IStorage {
       refinementHistory: data.refinementHistory ?? [],
       incubationObservations: data.incubationObservations ?? [],
     };
-    const db = await getDb().catch(() => null);
-    if (db) {
-      const [row] = await db
-        .insert(strategiesTable)
-        .values(this.strategyToDbValues(strategy))
-        .returning();
-      return row ? this.mapDbStrategy(row) : strategy;
+    try {
+      const db = await getDb();
+      if (db) {
+        const [row] = await db
+          .insert(strategiesTable)
+          .values(this.strategyToDbValues(strategy))
+          .returning();
+        return row ? this.mapDbStrategy(row) : strategy;
+      }
+    } catch {
+      // DB unavailable — fall through to Map
     }
     this.strategies.set(id, strategy);
     return strategy;
@@ -384,19 +396,23 @@ export class MemStorage implements IStorage {
     entry: { refinementType: "logic_fix" | "optimization"; rationale: string }
   ): Promise<void> {
     const newEntry = { refinementType: entry.refinementType, rationale: entry.rationale, at: new Date() };
-    const db = await getDb().catch(() => null);
-    if (db) {
-      const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
-      if (!existing) return;
-      const current = this.mapDbStrategy(existing);
-      const updated: Strategy = {
-        ...current,
-        refinementHistory: [...(current.refinementHistory ?? []), newEntry],
-      };
-      await db.update(strategiesTable)
-        .set(this.strategyToDbValues(updated))
-        .where(eq(strategiesTable.id, id));
-      return;
+    try {
+      const db = await getDb();
+      if (db) {
+        const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+        if (!existing) return;
+        const current = this.mapDbStrategy(existing);
+        const updated: Strategy = {
+          ...current,
+          refinementHistory: [...(current.refinementHistory ?? []), newEntry],
+        };
+        await db.update(strategiesTable)
+          .set(this.strategyToDbValues(updated))
+          .where(eq(strategiesTable.id, id));
+        return;
+      }
+    } catch {
+      // DB unavailable — fall through to Map
     }
     const existing = this.strategies.get(id);
     if (!existing) return;
@@ -410,18 +426,23 @@ export class MemStorage implements IStorage {
   async updateStrategy(id: string, data: Partial<InsertStrategy>): Promise<Strategy> {
     // Gate transition fields are managed exclusively by recordGate
     const { stage: _s, gateStatus: _gs, gateHistory: _gh, ...safeData } = data as any;
-    const db = await getDb().catch(() => null);
-    if (db) {
-      const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
-      if (!existing) throw new Error("Strategy not found");
-      const current = this.mapDbStrategy(existing);
-      const updated: Strategy = { ...current, ...safeData };
-      const [row] = await db
-        .update(strategiesTable)
-        .set(this.strategyToDbValues(updated))
-        .where(eq(strategiesTable.id, id))
-        .returning();
-      return row ? this.mapDbStrategy(row) : updated;
+    try {
+      const db = await getDb();
+      if (db) {
+        const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+        if (!existing) throw new Error("Strategy not found");
+        const current = this.mapDbStrategy(existing);
+        const updated: Strategy = { ...current, ...safeData };
+        const [row] = await db
+          .update(strategiesTable)
+          .set(this.strategyToDbValues(updated))
+          .where(eq(strategiesTable.id, id))
+          .returning();
+        return row ? this.mapDbStrategy(row) : updated;
+      }
+    } catch (err) {
+      if ((err as Error).message === "Strategy not found") throw err;
+      // DB connection error — fall through to Map
     }
     const existing = this.strategies.get(id);
     if (!existing) throw new Error("Strategy not found");
@@ -434,22 +455,13 @@ export class MemStorage implements IStorage {
     id: string,
     params: { result: "passed" | "failed" | "discarded"; note?: string }
   ): Promise<Strategy> {
-    const db = await getDb().catch(() => null);
-    if (db) {
-      const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
-      if (!existing) throw new Error("Strategy not found");
-      const current = this.mapDbStrategy(existing);
-      const entry: GateHistoryEntry = {
-        stage: current.stage,
-        result: params.result,
-        note: params.note,
-        at: new Date(),
-      };
-      const gateHistory = [...current.gateHistory, entry];
-      let stage = current.stage;
-      let gateStatus = current.gateStatus;
+    const applyTransition = (s: Strategy): Strategy => {
+      const entry: GateHistoryEntry = { stage: s.stage, result: params.result, note: params.note, at: new Date() };
+      const gateHistory = [...s.gateHistory, entry];
+      let stage = s.stage;
+      let gateStatus = s.gateStatus;
       if (params.result === "passed") {
-        const next = nextStage(current.stage);
+        const next = nextStage(s.stage);
         if (next !== null) { stage = next; gateStatus = "in_progress"; }
         else { gateStatus = "passed"; }
       } else if (params.result === "failed") {
@@ -457,46 +469,44 @@ export class MemStorage implements IStorage {
       } else if (params.result === "discarded") {
         gateStatus = "discarded";
       }
-      const updated: Strategy = { ...current, stage, gateStatus, gateHistory };
-      const [row] = await db
-        .update(strategiesTable)
-        .set(this.strategyToDbValues(updated))
-        .where(eq(strategiesTable.id, id))
-        .returning();
-      return row ? this.mapDbStrategy(row) : updated;
+      return { ...s, stage, gateStatus, gateHistory };
+    };
+    try {
+      const db = await getDb();
+      if (db) {
+        const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+        if (!existing) throw new Error("Strategy not found");
+        const updated = applyTransition(this.mapDbStrategy(existing));
+        const [row] = await db
+          .update(strategiesTable)
+          .set(this.strategyToDbValues(updated))
+          .where(eq(strategiesTable.id, id))
+          .returning();
+        return row ? this.mapDbStrategy(row) : updated;
+      }
+    } catch (err) {
+      if ((err as Error).message === "Strategy not found") throw err;
+      // DB connection error — fall through to Map
     }
     const existing = this.strategies.get(id);
     if (!existing) throw new Error("Strategy not found");
-    const entry: GateHistoryEntry = {
-      stage: existing.stage,
-      result: params.result,
-      note: params.note,
-      at: new Date(),
-    };
-    const gateHistory = [...existing.gateHistory, entry];
-    let stage = existing.stage;
-    let gateStatus = existing.gateStatus;
-    if (params.result === "passed") {
-      const next = nextStage(existing.stage);
-      if (next !== null) { stage = next; gateStatus = "in_progress"; }
-      else { gateStatus = "passed"; }
-    } else if (params.result === "failed") {
-      gateStatus = "failed";
-    } else if (params.result === "discarded") {
-      gateStatus = "discarded";
-    }
-    const updated: Strategy = { ...existing, stage, gateStatus, gateHistory };
+    const updated = applyTransition(existing);
     this.strategies.set(id, updated);
     return updated;
   }
 
   async deleteStrategy(id: string): Promise<void> {
-    const db = await getDb().catch(() => null);
-    if (db) {
-      const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
-      if (!existing) throw new Error("Strategy not found");
-      await db.delete(strategiesTable).where(eq(strategiesTable.id, id));
-      return;
+    try {
+      const db = await getDb();
+      if (db) {
+        const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+        if (!existing) throw new Error("Strategy not found");
+        await db.delete(strategiesTable).where(eq(strategiesTable.id, id));
+        return;
+      }
+    } catch (err) {
+      if ((err as Error).message === "Strategy not found") throw err;
+      // DB connection error — fall through to Map
     }
     if (!this.strategies.has(id)) throw new Error("Strategy not found");
     this.strategies.delete(id);
@@ -1124,17 +1134,21 @@ export class MemStorage implements IStorage {
   // ─── Incubation ──────────────────────────────────────────────
 
   async startIncubation(strategyId: string, requiredDays: number): Promise<Strategy> {
-    const db = await getDb().catch(() => null);
-    if (db) {
-      const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, strategyId));
-      if (!existing) throw new Error("Strategy not found");
-      const current = this.mapDbStrategy(existing);
-      const updated: Strategy = { ...current, incubationStartedAt: new Date(), requiredDays, incubationObservations: [] };
-      const [row] = await db.update(strategiesTable)
-        .set(this.strategyToDbValues(updated))
-        .where(eq(strategiesTable.id, strategyId))
-        .returning();
-      return row ? this.mapDbStrategy(row) : updated;
+    try {
+      const db = await getDb();
+      if (db) {
+        const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, strategyId));
+        if (!existing) throw new Error("Strategy not found");
+        const current = this.mapDbStrategy(existing);
+        const updated: Strategy = { ...current, incubationStartedAt: new Date(), requiredDays, incubationObservations: [] };
+        const [row] = await db.update(strategiesTable)
+          .set(this.strategyToDbValues(updated))
+          .where(eq(strategiesTable.id, strategyId))
+          .returning();
+        return row ? this.mapDbStrategy(row) : updated;
+      }
+    } catch (err) {
+      if ((err as Error).message === "Strategy not found") throw err;
     }
     const existing = this.strategies.get(strategyId);
     if (!existing) throw new Error("Strategy not found");
@@ -1144,20 +1158,24 @@ export class MemStorage implements IStorage {
   }
 
   async addIncubationObservation(strategyId: string, obs: IncubationObservation): Promise<Strategy> {
-    const db = await getDb().catch(() => null);
-    if (db) {
-      const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, strategyId));
-      if (!existing) throw new Error("Strategy not found");
-      const current = this.mapDbStrategy(existing);
-      const updated: Strategy = {
-        ...current,
-        incubationObservations: [...(current.incubationObservations ?? []), obs],
-      };
-      const [row] = await db.update(strategiesTable)
-        .set(this.strategyToDbValues(updated))
-        .where(eq(strategiesTable.id, strategyId))
-        .returning();
-      return row ? this.mapDbStrategy(row) : updated;
+    try {
+      const db = await getDb();
+      if (db) {
+        const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, strategyId));
+        if (!existing) throw new Error("Strategy not found");
+        const current = this.mapDbStrategy(existing);
+        const updated: Strategy = {
+          ...current,
+          incubationObservations: [...(current.incubationObservations ?? []), obs],
+        };
+        const [row] = await db.update(strategiesTable)
+          .set(this.strategyToDbValues(updated))
+          .where(eq(strategiesTable.id, strategyId))
+          .returning();
+        return row ? this.mapDbStrategy(row) : updated;
+      }
+    } catch (err) {
+      if ((err as Error).message === "Strategy not found") throw err;
     }
     const existing = this.strategies.get(strategyId);
     if (!existing) throw new Error("Strategy not found");
@@ -1169,34 +1187,37 @@ export class MemStorage implements IStorage {
   // ─── Walk-Forward Config ─────────────────────────────────────
 
   async updateWalkForwardConfig(strategyId: string, config: WalkForwardConfig): Promise<Strategy> {
-    const db = await getDb().catch(() => null);
-    const getRaw = async () => {
+    const buildUpdate = (existing: Strategy): Strategy => {
+      const entry: GateHistoryEntry = {
+        stage: existing.stage,
+        result: "passed",
+        note: `Walk-forward config updated: ${config.numWindows} windows, IS=${config.inSampleDays}d / OOS=${config.outOfSampleDays}d, anchored=${config.anchored}`,
+        at: new Date(),
+      };
+      return {
+        ...existing,
+        walkForwardConfig: { ...config, lockedAt: new Date() },
+        gateHistory: [...existing.gateHistory, entry],
+      };
+    };
+    try {
+      const db = await getDb();
       if (db) {
-        const [row] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, strategyId));
-        return row ? this.mapDbStrategy(row) : null;
+        const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, strategyId));
+        if (!existing) throw new Error("Strategy not found");
+        const updated = buildUpdate(this.mapDbStrategy(existing));
+        const [row] = await db.update(strategiesTable)
+          .set(this.strategyToDbValues(updated))
+          .where(eq(strategiesTable.id, strategyId))
+          .returning();
+        return row ? this.mapDbStrategy(row) : updated;
       }
-      return this.strategies.get(strategyId) ?? null;
-    };
-    const existing = await getRaw();
-    if (!existing) throw new Error("Strategy not found");
-    const entry: GateHistoryEntry = {
-      stage: existing.stage,
-      result: "passed",
-      note: `Walk-forward config updated: ${config.numWindows} windows, IS=${config.inSampleDays}d / OOS=${config.outOfSampleDays}d, anchored=${config.anchored}`,
-      at: new Date(),
-    };
-    const updated: Strategy = {
-      ...existing,
-      walkForwardConfig: { ...config, lockedAt: new Date() },
-      gateHistory: [...existing.gateHistory, entry],
-    };
-    if (db) {
-      const [row] = await db.update(strategiesTable)
-        .set(this.strategyToDbValues(updated))
-        .where(eq(strategiesTable.id, strategyId))
-        .returning();
-      return row ? this.mapDbStrategy(row) : updated;
+    } catch (err) {
+      if ((err as Error).message === "Strategy not found") throw err;
     }
+    const existing = this.strategies.get(strategyId);
+    if (!existing) throw new Error("Strategy not found");
+    const updated = buildUpdate(existing);
     this.strategies.set(strategyId, updated);
     return updated;
   }

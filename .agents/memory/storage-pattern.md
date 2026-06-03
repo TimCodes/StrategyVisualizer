@@ -1,30 +1,52 @@
 ---
-name: Storage try/catch in-memory-first pattern
-description: All MemStorage methods must do in-memory first, then attempt DB in a try/catch.
+name: Storage try/catch patterns
+description: Two distinct patterns coexist in MemStorage — which to use depends on whether data needs persistence or just resilience.
 ---
 
-**Rule:** Every storage method must:
-1. Do the in-memory operation first (set/get from the Map or array).
-2. In a `try { ... } catch { // fall through }` block, attempt the DB operation.
-3. If DB succeeds, update the in-memory copy and return the DB row.
-4. If DB throws, silently fall through and return the already-set in-memory copy.
+## Pattern A — Map-first (trials, gate results, etc.)
+Write to Map first, then attempt DB in a try/catch. Used where in-flight data must never be lost even if DB is unreachable.
 
-**Why:** The Neon serverless WebSocket connection throws on cold starts and intermittently under load. The app uses `getDb()` which can return `null` or throw. Doing in-memory first means the app is always functional even if the DB is unavailable.
-
-**Pattern (correct):**
 ```typescript
-async recordGateResult(data): Promise<GateResult> {
-  const record = { ...data, id: randomUUID(), computedAt: new Date() };
-  this.gateResults.set(record.id, record);  // in-memory first
+async recordSomething(data): Promise<Thing> {
+  const record = { ...data, id: randomUUID() };
+  this.things.set(record.id, record);  // always set in-memory first
   try {
     const db = await getDb();
     if (db) {
-      const [row] = await db.insert(gateResultsTable).values(data).returning();
-      if (row) { this.gateResults.set(row.id, row); return row; }
+      const [row] = await db.insert(table).values(data).returning();
+      if (row) { this.things.set(row.id, row); return row; }
     }
   } catch { /* fall through */ }
   return record;
 }
 ```
 
-**Do NOT** do DB first and fall back — the DB error would lose the write entirely if in-memory is not pre-set.
+## Pattern B — DB-first (strategies)
+Try DB inside a full try/catch; fall through to Map on any error. Used where DB is the source of truth and the Map is a warm seed/fallback.
+
+```typescript
+async getStrategies(): Promise<Strategy[]> {
+  try {
+    const db = await getDb();
+    if (db) {
+      const rows = await db.select().from(strategiesTable);
+      return rows.map(mapDbStrategy);
+    }
+  } catch {
+    // Neon WebSocket failed — fall through to Map
+  }
+  return Array.from(this.strategies.values());
+}
+```
+
+**Why:** The Neon serverless driver returns a client object immediately (getDb() resolves) but the actual WebSocket only opens when a query runs. `getDb().catch(() => null)` does NOT catch query-time WebSocket errors — the query itself must be inside try/catch.
+
+**Key pitfall:** `getDb().catch(() => null)` then `await db.query()` is WRONG — the query can throw even when db is non-null. Always wrap the entire block.
+
+**Re-throw "not found":** Write methods that check existence must re-throw `"Strategy not found"` through the catch so callers get 404 not a silent Map miss:
+```typescript
+} catch (err) {
+  if ((err as Error).message === "Strategy not found") throw err;
+  // DB connection error — fall through to Map
+}
+```
