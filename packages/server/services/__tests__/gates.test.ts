@@ -5,6 +5,8 @@ import {
   computeDeflatedSharpe,
   assertEvaluable,
   SIMULATED_REASON,
+  computeIncubationVerdict,
+  DD_BLOWOUT_FACTOR,
 } from "../gates";
 import { computePBO, computeWFE } from "../pbo";
 import type { LeanBacktest } from "@shared/schema";
@@ -213,6 +215,146 @@ describe("computePBO", () => {
     const { pbo } = computePBO(matrix);
     expect(pbo).toBeGreaterThanOrEqual(0);
     expect(pbo).toBeLessThanOrEqual(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+//  computeIncubationVerdict
+// ─────────────────────────────────────────────────────────────
+
+function makeObs(
+  overrides: Partial<{ observedReturn: number; observedDrawdown: number; source: string }>[] = []
+) {
+  return overrides.map((o) => ({
+    observedReturn: o.observedReturn ?? 0.05,
+    observedDrawdown: o.observedDrawdown ?? 0.02,
+    source: o.source ?? "manual",
+  }));
+}
+
+describe("computeIncubationVerdict", () => {
+  const baseArgs = {
+    expectedReturn: 0.15,
+    expectedMaxDrawdown: 0.10,
+    requiredDays: 90,
+    elapsedDays: 90,
+    periodComplete: true,
+  };
+
+  it("returns cannot_evaluate when period is incomplete", () => {
+    const result = computeIncubationVerdict({
+      ...baseArgs,
+      periodComplete: false,
+      elapsedDays: 30,
+      observations: makeObs([{}, {}, {}]),
+    });
+    expect(result.verdict).toBe("cannot_evaluate");
+    expect(result.reason).toMatch(/incomplete/i);
+    expect(result.reason).toMatch(/60/); // 90-30 remaining
+  });
+
+  it("returns cannot_evaluate when fewer than 3 observations", () => {
+    const result = computeIncubationVerdict({
+      ...baseArgs,
+      observations: makeObs([{}, {}]),
+    });
+    expect(result.verdict).toBe("cannot_evaluate");
+    expect(result.reason).toMatch(/minimum 3/i);
+    expect(result.metrics.observationCount).toBe(2);
+  });
+
+  it("returns fail when drawdown exceeds DD_BLOWOUT_FACTOR × expected", () => {
+    // expected DD = 0.10 → tolerance = 0.15; avg DD = 0.20 → blowout
+    const result = computeIncubationVerdict({
+      ...baseArgs,
+      observations: makeObs([
+        { observedReturn: 0.05, observedDrawdown: 0.20 },
+        { observedReturn: 0.05, observedDrawdown: 0.20 },
+        { observedReturn: 0.05, observedDrawdown: 0.20 },
+      ]),
+    });
+    expect(result.verdict).toBe("fail");
+    expect(result.reason).toMatch(/drawdown/i);
+    expect(result.reason).toMatch(/blowout|tolerance|exceeds/i);
+    expect(result.metrics.avgDrawdown).toBeCloseTo(0.20);
+  });
+
+  it("returns fail when average return is negative", () => {
+    const result = computeIncubationVerdict({
+      ...baseArgs,
+      observations: makeObs([
+        { observedReturn: -0.03, observedDrawdown: 0.02 },
+        { observedReturn: -0.02, observedDrawdown: 0.02 },
+        { observedReturn: -0.01, observedDrawdown: 0.02 },
+      ]),
+    });
+    expect(result.verdict).toBe("fail");
+    expect(result.reason).toMatch(/net-negative/i);
+    expect(result.metrics.avgReturn).toBeLessThan(0);
+  });
+
+  it("returns pass for healthy forward data within tolerance", () => {
+    const result = computeIncubationVerdict({
+      ...baseArgs,
+      observations: makeObs([
+        { observedReturn: 0.04, observedDrawdown: 0.05 },
+        { observedReturn: 0.06, observedDrawdown: 0.04 },
+        { observedReturn: 0.05, observedDrawdown: 0.03 },
+      ]),
+    });
+    expect(result.verdict).toBe("pass");
+    expect(result.metrics.avgReturn).toBeCloseTo(0.05);
+    expect(result.metrics.avgDrawdown).toBeCloseTo(0.04);
+  });
+
+  it("DD_BLOWOUT_FACTOR is 1.5 (tolerance = expectedDD × 1.5)", () => {
+    expect(DD_BLOWOUT_FACTOR).toBe(1.5);
+    // avg DD exactly at tolerance edge should still pass
+    const ddAtEdge = 0.10 * DD_BLOWOUT_FACTOR; // 0.15 exactly
+    const result = computeIncubationVerdict({
+      ...baseArgs,
+      observations: makeObs([
+        { observedReturn: 0.05, observedDrawdown: ddAtEdge },
+        { observedReturn: 0.05, observedDrawdown: ddAtEdge },
+        { observedReturn: 0.05, observedDrawdown: ddAtEdge },
+      ]),
+    });
+    // equal to tolerance (not strictly greater) → should pass
+    expect(result.verdict).toBe("pass");
+  });
+
+  it("provenance label in reason reflects all-live sources", () => {
+    const result = computeIncubationVerdict({
+      ...baseArgs,
+      observations: [
+        { observedReturn: 0.05, observedDrawdown: 0.02, source: "live" },
+        { observedReturn: 0.04, observedDrawdown: 0.03, source: "live" },
+        { observedReturn: 0.06, observedDrawdown: 0.02, source: "live" },
+      ],
+    });
+    expect(result.verdict).toBe("pass");
+    expect(result.reason).toMatch(/live forward data/i);
+  });
+
+  it("provenance label in reason reflects paper trading when any is paper", () => {
+    const result = computeIncubationVerdict({
+      ...baseArgs,
+      observations: [
+        { observedReturn: 0.05, observedDrawdown: 0.02, source: "paper" },
+        { observedReturn: 0.04, observedDrawdown: 0.03, source: "live" },
+        { observedReturn: 0.06, observedDrawdown: 0.02, source: "manual" },
+      ],
+    });
+    expect(result.verdict).toBe("pass");
+    expect(result.reason).toMatch(/paper-trading/i);
+  });
+
+  it("provenance falls back to self-reported for all-manual sources", () => {
+    const result = computeIncubationVerdict({
+      ...baseArgs,
+      observations: makeObs([{}, {}, {}]),
+    });
+    expect(result.reason).toMatch(/self-reported/i);
   });
 });
 

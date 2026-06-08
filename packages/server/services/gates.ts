@@ -329,6 +329,140 @@ export async function computeDeflatedSharpe(
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Incubation gate — forward observation verdict
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Forward drawdown may not exceed expectedMaxDrawdown × this factor.
+ * Same constant is referenced in the UI comparison widget so the visual
+ * always agrees with the gate verdict.
+ */
+export const DD_BLOWOUT_FACTOR = 1.5;
+
+export interface IncubationVerdictInput {
+  observations: Array<{
+    observedReturn: number;
+    observedDrawdown: number;
+    source?: string;
+  }>;
+  expectedReturn: number | null | undefined;
+  expectedMaxDrawdown: number | null | undefined;
+  periodComplete: boolean;
+  requiredDays: number;
+  elapsedDays: number;
+}
+
+export interface IncubationVerdictResult {
+  verdict: "pass" | "fail" | "cannot_evaluate";
+  reason: string;
+  metrics: {
+    avgReturn: number;
+    avgDrawdown: number;
+    expectedReturn: number;
+    expectedMaxDrawdown: number;
+    ddTolerance: number;
+    observationCount: number;
+    elapsedDays: number;
+  };
+}
+
+export function computeIncubationVerdict(
+  input: IncubationVerdictInput
+): IncubationVerdictResult {
+  const {
+    observations,
+    expectedReturn,
+    expectedMaxDrawdown,
+    periodComplete,
+    requiredDays,
+    elapsedDays,
+  } = input;
+
+  const expRet = expectedReturn ?? 0;
+  const expDD = expectedMaxDrawdown ?? 0;
+  const ddTolerance = expDD * DD_BLOWOUT_FACTOR;
+
+  const baseMetrics = {
+    avgReturn: 0,
+    avgDrawdown: 0,
+    expectedReturn: expRet,
+    expectedMaxDrawdown: expDD,
+    ddTolerance,
+    observationCount: observations.length,
+    elapsedDays,
+  };
+
+  if (!periodComplete) {
+    const remaining = Math.max(0, requiredDays - elapsedDays);
+    return {
+      verdict: "cannot_evaluate",
+      reason: `Incubation period incomplete: ${remaining} days remaining (${elapsedDays}/${requiredDays} elapsed).`,
+      metrics: baseMetrics,
+    };
+  }
+
+  if (observations.length < 3) {
+    return {
+      verdict: "cannot_evaluate",
+      reason: `Minimum 3 observations required; ${observations.length} logged.`,
+      metrics: baseMetrics,
+    };
+  }
+
+  const avgReturn =
+    observations.reduce((s, o) => s + o.observedReturn, 0) / observations.length;
+  const avgDrawdown =
+    observations.reduce((s, o) => s + o.observedDrawdown, 0) / observations.length;
+
+  // Determine provenance label for honest reason string
+  const allLive = observations.every((o) => o.source === "live");
+  const anyPaper = observations.some((o) => o.source === "paper");
+  const provenance = allLive
+    ? "live forward data"
+    : anyPaper
+    ? "paper-trading data"
+    : "self-reported manual observations";
+
+  const metrics = {
+    avgReturn,
+    avgDrawdown,
+    expectedReturn: expRet,
+    expectedMaxDrawdown: expDD,
+    ddTolerance,
+    observationCount: observations.length,
+    elapsedDays,
+  };
+
+  // Guard 1: drawdown blowout
+  if (avgDrawdown > ddTolerance) {
+    return {
+      verdict: "fail",
+      reason: `Forward max drawdown (${(avgDrawdown * 100).toFixed(1)}%) exceeds tolerance ` +
+        `(${(ddTolerance * 100).toFixed(1)}% = ${DD_BLOWOUT_FACTOR}× expected ${(expDD * 100).toFixed(1)}%). ` +
+        `Verdict rests on ${provenance}.`,
+      metrics,
+    };
+  }
+
+  // Guard 2: net-negative return
+  if (avgReturn < 0) {
+    return {
+      verdict: "fail",
+      reason: `Net-negative average return (${(avgReturn * 100).toFixed(2)}%) over the incubation period. ` +
+        `Verdict rests on ${provenance}.`,
+      metrics,
+    };
+  }
+
+  return {
+    verdict: "pass",
+    reason: `Forward return ${(avgReturn * 100).toFixed(2)}% with avg drawdown ${(avgDrawdown * 100).toFixed(1)}% ` +
+      `within ${DD_BLOWOUT_FACTOR}× tolerance. Verdict rests on ${provenance}.`,
+    metrics,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
 //  B1 — Walk-Forward (scaffold — cannot_evaluate today)
 // ─────────────────────────────────────────────────────────────
 

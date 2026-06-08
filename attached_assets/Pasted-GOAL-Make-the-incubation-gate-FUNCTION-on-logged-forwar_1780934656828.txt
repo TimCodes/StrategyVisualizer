@@ -1,0 +1,89 @@
+GOAL
+Make the incubation gate FUNCTION on logged forward observations, and finish the observation
+review UI. NOTE: a previous attempt at this did NOT land — the repo is currently UNCHANGED:
+routes/gates.ts incubation/evaluate still has the dead line `const anyLive = obs.some(() =>
+false)` and ALWAYS returns cannot_evaluate; incubationObservationSchema has no `source` field;
+the UI log form still captures only return/drawdown. Implement from this current state and
+COMMIT the result.
+
+WHY: incubation is the one gate whose evidence is real-world forward observation, not the
+simulated backtest, so it can legitimately pass on genuine forward data — once observations
+carry provenance and evaluate computes a real verdict. The automated paper/live data feed is
+still a LATER concern; this is honest manual entry.
+
+CONFIRMED CURRENT STATE (verified in the repo)
+- shared/schema.ts incubationObservationSchema = { date: string, observedReturn: number,
+  observedDrawdown: number, note?: string }. NO source.
+- routes/gates.ts: incubationObsBodySchema = incubationObservationSchema (so adding source to
+  the schema auto-applies to the observation endpoint). The evaluate handler KEEPS its early
+  guards (period incomplete -> cannot_evaluate; <3 observations -> cannot_evaluate) but then
+  has a verdict block (~lines 302-330) that hard-codes cannot_evaluate via `obs.some(() =>
+  false)` and dataSource "simulated". THAT block is what to replace.
+- gates.ts already holds the other gate computations (computeMonteCarlo etc.) as pure,
+  unit-tested functions — follow that pattern.
+- Client incubation UI: components/strategies/GatePipelinePanel.tsx — obsReturn/obsDrawdown
+  state, log form ~line 408, mutation sends only observedReturn/observedDrawdown (~line 200),
+  shows only an observation COUNT.
+
+PART A — Backend
+A1) shared/schema.ts: add `source: z.enum(["paper","live","manual"]).default("manual")` to
+    incubationObservationSchema (keep the other fields).
+A2) gates.ts: add a PURE, testable function (mirror computeMonteCarlo's style):
+      computeIncubationVerdict({ observations, expectedReturn, expectedMaxDrawdown,
+        periodComplete, requiredDays, elapsedDays })
+    Logic with a named, documented constant:
+      const DD_BLOWOUT_FACTOR = 1.5;  // forward DD may not exceed expectedMaxDrawdown * this
+      - if !periodComplete -> { verdict: "cannot_evaluate", reason: "...N days remaining" }
+      - if observations.length < 3 -> { verdict: "cannot_evaluate", reason: "min 3 observations" }
+      - else compute avgReturn, avgDrawdown across observations:
+          * FAIL if avgDrawdown > expectedMaxDrawdown * DD_BLOWOUT_FACTOR
+            (forward drawdown materially worse than backtest)
+          * FAIL if avgReturn < 0 (net-negative over the incubation period)
+          * else PASS
+      - returns { verdict, reason, metrics: { avgReturn, avgDrawdown, expectedReturn,
+          expectedMaxDrawdown, ddTolerance: expectedMaxDrawdown*DD_BLOWOUT_FACTOR,
+          observationCount, elapsedDays } }
+      - reason must be honest when sources are "manual": note the verdict rests on
+        self-reported forward data.
+A3) routes/gates.ts incubation/evaluate: DELETE the `obs.some(() => false)` block. Call
+    computeIncubationVerdict with strategy.performance as expectedReturn and
+    strategy.maxDrawdown as expectedMaxDrawdown. Record the gate result; set its dataSource by
+    provenance (all "live" -> "live"; any "paper" -> "paper"; else "self_reported"). On a
+    pass/fail (not cannot_evaluate) call recordGate so the stage advances, like the other gates.
+A4) gates.test.ts: add unit tests for computeIncubationVerdict — period incomplete and <3 obs
+    -> cannot_evaluate; a drawdown blowout -> fail; net-negative return -> fail; healthy
+    forward data -> pass. (This locks it in and makes it CI-checkable later.)
+
+PART B — Frontend (GatePipelinePanel.tsx incubation section)
+B1) Log form: add a Source selector (paper/live/manual, default manual), an optional Note
+    input, and an optional Date input (default today). Send source, note, date along with
+    observedReturn/observedDrawdown.
+B2) Observations table: render strategy.incubationObservations newest-first —
+    date | return | max drawdown | source badge | note. (Seeing the series is the point.)
+B3) Forward-vs-expected comparison: show expected return (strategy.performance) and max
+    drawdown (strategy.maxDrawdown) beside the observed averages, with a Tracking/Diverging
+    indicator using the SAME DD_BLOWOUT_FACTOR / net-negative rules as A2 so the visual always
+    agrees with the verdict. If the strategy has no live_engine backtest, note the baseline
+    isn't yet validated.
+B4) Small trend chart of observedReturn & observedDrawdown using the chart lib already used
+    for equity curves (recharts) or a minimal inline SVG sparkline. Keep it small.
+
+VERIFICATION (run these and paste the results — do not report "done" without them)
+- `grep -n "source" packages/shared/schema.ts` shows the new enum on the observation schema.
+- `grep -n "obs.some" packages/server/routes/gates.ts` returns NOTHING (dead code removed).
+- `grep -rn "computeIncubationVerdict\|DD_BLOWOUT" packages/server` shows the new function used
+  in both gates.ts and routes/gates.ts.
+- `npx tsc --noEmit` -> 0 errors.
+- `npx vitest run` -> all pass, including the new incubation tests.
+- Confirm the GatePipelinePanel log form now has source + note + date and renders the
+  observations table.
+
+ACCEPTANCE CRITERIA
+- With period complete + >=3 observations, evaluate returns a real pass/fail (not always
+  cannot_evaluate); blowout/negative -> fail; healthy -> pass and advances the stage.
+- Provenance is recorded and the reason is honest about self-reported data.
+- The UI captures source/note/date, lists observations, shows the comparison + chart.
+- tsc clean; vitest green (incl. new tests). COMMIT everything.
+
+Show me: the schema change, computeIncubationVerdict + its tests, the rewritten evaluate
+handler, the updated incubation UI, and the full VERIFICATION output.

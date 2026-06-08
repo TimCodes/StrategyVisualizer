@@ -63,6 +63,7 @@ export const incubationObservationSchema = z.object({
   observedReturn: z.number(),
   observedDrawdown: z.number(),
   note: z.string().optional(),
+  source: z.enum(["paper", "live", "manual"]).default("manual"),
 });
 export type IncubationObservation = z.infer<typeof incubationObservationSchema>;
 

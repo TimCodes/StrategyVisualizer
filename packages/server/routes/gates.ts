@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
-import { computeMonteCarlo, computeDeflatedSharpe, assertEvaluable, persistGateResult } from "../services/gates";
+import { computeMonteCarlo, computeDeflatedSharpe, assertEvaluable, persistGateResult, computeIncubationVerdict } from "../services/gates";
 import { walkForwardCannotEvaluate, pboCannotEvaluate } from "../services/pbo";
 import { incubationObservationSchema, walkForwardConfigSchema } from "@shared/schema";
 
@@ -299,31 +299,34 @@ export function registerGateRoutes(app: Express) {
         });
       }
 
-      // Evaluate: check observations for real_engine data (same guard as MC)
-      const anyLive = obs.some(() => false); // observations don't carry dataSource
-      const verdict: "cannot_evaluate" = "cannot_evaluate";
-      const reason =
-        "Observations logged but cannot validate without a live backtest engine data source. " +
-        "Attach live performance data to each observation to enable gate evaluation.";
-
-      const gateRecord = await storage.recordGateResult({
-        strategyId: id,
-        gate: "incubation",
-        verdict,
-        metrics: {
-          elapsedDays,
-          requiredDays: strategy.requiredDays ?? 90,
-          observationCount: obs.length,
-          avgReturn: obs.reduce((s, o) => s + o.observedReturn, 0) / obs.length,
-          avgDrawdown: obs.reduce((s, o) => s + o.observedDrawdown, 0) / obs.length,
-        },
-        dataSource: "simulated",
-        reason,
+      // Compute real verdict from observations
+      const result = computeIncubationVerdict({
+        observations: obs,
+        expectedReturn: strategy.performance,
+        expectedMaxDrawdown: strategy.maxDrawdown,
+        periodComplete,
+        requiredDays: strategy.requiredDays ?? 90,
+        elapsedDays,
       });
 
+      // Derive provenance for the gate record dataSource
+      const allLive = obs.every((o) => (o as any).source === "live");
+      const anyPaper = obs.some((o) => (o as any).source === "paper");
+      const dataSource = allLive ? "live" : anyPaper ? "paper" : "self_reported";
+
+      const gateRecord = await persistGateResult(
+        id,
+        "incubation",
+        result.verdict,
+        { ...result.metrics, requiredDays: strategy.requiredDays ?? 90 },
+        dataSource,
+        result.reason
+      );
+
       res.json({
-        verdict,
-        reason,
+        verdict: result.verdict,
+        reason: result.reason,
+        metrics: result.metrics,
         elapsedDays,
         observationCount: obs.length,
         gateResult: gateRecord,

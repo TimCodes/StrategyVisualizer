@@ -3,16 +3,23 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Activity, FlaskConical, Clock, TrendingUp, AlertTriangle,
   ChevronDown, ChevronUp, CheckCircle2, XCircle, HelpCircle,
-  Play, Plus, RefreshCw
+  Play, Plus, RefreshCw, Database
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { GateResult } from "@shared/schema";
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Legend,
+} from "recharts";
+
+/** Must match DD_BLOWOUT_FACTOR in packages/server/services/gates.ts */
+const DD_BLOWOUT_FACTOR = 1.5;
 
 interface Props {
   strategyId: string;
@@ -131,6 +138,9 @@ export default function GatePipelinePanel({ strategyId }: Props) {
   const [incubDays, setIncubDays] = useState("90");
   const [obsReturn, setObsReturn] = useState("");
   const [obsDrawdown, setObsDrawdown] = useState("");
+  const [obsSource, setObsSource] = useState<"manual" | "paper" | "live">("manual");
+  const [obsNote, setObsNote] = useState("");
+  const [obsDate, setObsDate] = useState(new Date().toISOString().split("T")[0]);
 
   // fetch strategy for incubation state
   const { data: strategyData } = useQuery<any>({
@@ -198,14 +208,18 @@ export default function GatePipelinePanel({ strategyId }: Props) {
   const incubObsMutation = useMutation({
     mutationFn: () =>
       apiRequest("POST", `/api/strategies/${strategyId}/gates/incubation/observation`, {
-        date: new Date().toISOString().split("T")[0],
+        date: obsDate || new Date().toISOString().split("T")[0],
         observedReturn: parseFloat(obsReturn) || 0,
         observedDrawdown: parseFloat(obsDrawdown) || 0,
+        source: obsSource,
+        note: obsNote || undefined,
       }),
     onSuccess: () => {
       toast({ title: "Observation logged" });
       setObsReturn("");
       setObsDrawdown("");
+      setObsNote("");
+      setObsDate(new Date().toISOString().split("T")[0]);
       invalidateAll();
     },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
@@ -406,14 +420,15 @@ export default function GatePipelinePanel({ strategyId }: Props) {
 
               {strategyData?.incubationStartedAt && (
                 <>
-                  <div className="space-y-2">
+                  {/* ── Log observation form ──────────────────── */}
+                  <div className="space-y-2 border border-border rounded-md p-2">
                     <p className="text-xs font-medium text-text-primary">Log observation</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
                         <Label className="text-xs">Return</Label>
                         <Input
                           type="number"
-                          step="0.01"
+                          step="0.001"
                           className="h-7 text-xs"
                           placeholder="0.05"
                           value={obsReturn}
@@ -424,13 +439,46 @@ export default function GatePipelinePanel({ strategyId }: Props) {
                         <Label className="text-xs">Max Drawdown</Label>
                         <Input
                           type="number"
-                          step="0.01"
+                          step="0.001"
                           className="h-7 text-xs"
                           placeholder="0.03"
                           value={obsDrawdown}
                           onChange={e => setObsDrawdown(e.target.value)}
                         />
                       </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Date</Label>
+                        <Input
+                          type="date"
+                          className="h-7 text-xs"
+                          value={obsDate}
+                          onChange={e => setObsDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Source</Label>
+                        <Select value={obsSource} onValueChange={(v) => setObsSource(v as any)}>
+                          <SelectTrigger className="h-7 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="manual">Manual</SelectItem>
+                            <SelectItem value="paper">Paper</SelectItem>
+                            <SelectItem value="live">Live</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Note (optional)</Label>
+                      <Input
+                        className="h-7 text-xs"
+                        placeholder="e.g. week 3, gap-fill event"
+                        value={obsNote}
+                        onChange={e => setObsNote(e.target.value)}
+                      />
                     </div>
                     <Button
                       size="sm"
@@ -443,6 +491,28 @@ export default function GatePipelinePanel({ strategyId }: Props) {
                       Log Observation
                     </Button>
                   </div>
+
+                  {/* ── Observations table ────────────────────── */}
+                  {(strategyData?.incubationObservations?.length ?? 0) > 0 && (
+                    <IncubationObsTable
+                      observations={strategyData.incubationObservations}
+                    />
+                  )}
+
+                  {/* ── Forward vs expected comparison ───────── */}
+                  {(strategyData?.incubationObservations?.length ?? 0) >= 3 && (
+                    <IncubationComparison
+                      observations={strategyData.incubationObservations}
+                      expectedReturn={strategyData.performance}
+                      expectedMaxDrawdown={strategyData.maxDrawdown}
+                      hasLiveBacktest={false}
+                    />
+                  )}
+
+                  {/* ── Sparkline chart ───────────────────────── */}
+                  {(strategyData?.incubationObservations?.length ?? 0) >= 2 && (
+                    <IncubationSparkline observations={strategyData.incubationObservations} />
+                  )}
 
                   <Button
                     size="sm"
@@ -465,6 +535,169 @@ export default function GatePipelinePanel({ strategyId }: Props) {
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+// ─── Incubation sub-components ──────────────────────────────
+
+const SOURCE_COLORS: Record<string, string> = {
+  live: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  paper: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  manual: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+};
+
+function SourceBadge({ source }: { source?: string }) {
+  const s = source ?? "manual";
+  return (
+    <Badge className={`capitalize text-xs px-1.5 py-0 ${SOURCE_COLORS[s] ?? SOURCE_COLORS.manual}`}>
+      {s}
+    </Badge>
+  );
+}
+
+function IncubationObsTable({ observations }: { observations: any[] }) {
+  const sorted = [...observations].reverse(); // newest first
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-text-primary">Observations ({observations.length})</p>
+      <div className="rounded-md border border-border overflow-auto max-h-48">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border bg-surface-raised">
+              <th className="text-left px-2 py-1 text-text-secondary font-medium">Date</th>
+              <th className="text-right px-2 py-1 text-text-secondary font-medium">Return</th>
+              <th className="text-right px-2 py-1 text-text-secondary font-medium">DD</th>
+              <th className="text-center px-2 py-1 text-text-secondary font-medium">Source</th>
+              <th className="text-left px-2 py-1 text-text-secondary font-medium">Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((obs, i) => (
+              <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-surface-raised/50">
+                <td className="px-2 py-1 tabular-nums text-text-secondary">{obs.date}</td>
+                <td className={`px-2 py-1 tabular-nums text-right font-medium ${obs.observedReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {obs.observedReturn >= 0 ? "+" : ""}{(obs.observedReturn * 100).toFixed(2)}%
+                </td>
+                <td className="px-2 py-1 tabular-nums text-right text-amber-400">
+                  {(obs.observedDrawdown * 100).toFixed(2)}%
+                </td>
+                <td className="px-2 py-1 text-center">
+                  <SourceBadge source={obs.source} />
+                </td>
+                <td className="px-2 py-1 text-text-secondary truncate max-w-[80px]">{obs.note ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function IncubationComparison({
+  observations,
+  expectedReturn,
+  expectedMaxDrawdown,
+  hasLiveBacktest,
+}: {
+  observations: any[];
+  expectedReturn?: number | null;
+  expectedMaxDrawdown?: number | null;
+  hasLiveBacktest: boolean;
+}) {
+  if (observations.length < 3) return null;
+
+  const avgReturn = observations.reduce((s: number, o: any) => s + o.observedReturn, 0) / observations.length;
+  const avgDrawdown = observations.reduce((s: number, o: any) => s + o.observedDrawdown, 0) / observations.length;
+  const expRet = expectedReturn ?? 0;
+  const expDD = expectedMaxDrawdown ?? 0;
+  const ddTolerance = expDD * DD_BLOWOUT_FACTOR;
+
+  const ddBlowout = avgDrawdown > ddTolerance;
+  const netNegative = avgReturn < 0;
+  const status = ddBlowout || netNegative ? "diverging" : "tracking";
+
+  return (
+    <div className="space-y-2 border border-border rounded-md p-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-text-primary flex items-center gap-1">
+          <TrendingUp className="h-3 w-3" />
+          Forward vs Expected
+        </p>
+        <Badge className={status === "tracking"
+          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-xs"
+          : "bg-red-500/15 text-red-400 border-red-500/30 text-xs"
+        }>
+          {status === "tracking" ? "Tracking" : "Diverging"}
+        </Badge>
+      </div>
+
+      {!hasLiveBacktest && (
+        <p className="text-xs text-amber-400 flex items-center gap-1">
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          Baseline not validated (no live_engine backtest)
+        </p>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-surface-raised rounded p-2 space-y-1">
+          <p className="text-xs text-text-secondary">Return</p>
+          <div className="flex items-end justify-between">
+            <span className={`text-sm font-semibold ${avgReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+              {avgReturn >= 0 ? "+" : ""}{(avgReturn * 100).toFixed(2)}%
+            </span>
+            <span className="text-xs text-text-secondary">exp {(expRet * 100).toFixed(1)}%</span>
+          </div>
+          {netNegative && (
+            <p className="text-xs text-red-400">Net negative ✗</p>
+          )}
+        </div>
+        <div className="bg-surface-raised rounded p-2 space-y-1">
+          <p className="text-xs text-text-secondary">Drawdown</p>
+          <div className="flex items-end justify-between">
+            <span className={`text-sm font-semibold ${ddBlowout ? "text-red-400" : "text-amber-400"}`}>
+              {(avgDrawdown * 100).toFixed(2)}%
+            </span>
+            <span className="text-xs text-text-secondary">tol {(ddTolerance * 100).toFixed(1)}%</span>
+          </div>
+          {ddBlowout && (
+            <p className="text-xs text-red-400">Blowout ({DD_BLOWOUT_FACTOR}×) ✗</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IncubationSparkline({ observations }: { observations: any[] }) {
+  if (observations.length < 2) return null;
+
+  const data = [...observations]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((o) => ({
+      date: o.date,
+      return: +(o.observedReturn * 100).toFixed(2),
+      drawdown: +(o.observedDrawdown * 100).toFixed(2),
+    }));
+
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-text-primary">Trend</p>
+      <ResponsiveContainer width="100%" height={80}>
+        <LineChart data={data} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+          <XAxis dataKey="date" hide />
+          <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 9 }} />
+          <Tooltip
+            contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, fontSize: 10 }}
+            formatter={(v: any, name: string) => [`${v}%`, name === "return" ? "Return" : "Drawdown"]}
+            labelFormatter={(l) => l}
+          />
+          <ReferenceLine y={0} stroke="var(--text-secondary)" strokeDasharray="3 3" />
+          <Line type="monotone" dataKey="return" stroke="#10b981" strokeWidth={1.5} dot={{ r: 2 }} name="return" />
+          <Line type="monotone" dataKey="drawdown" stroke="#f59e0b" strokeWidth={1.5} dot={{ r: 2 }} name="drawdown" />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
