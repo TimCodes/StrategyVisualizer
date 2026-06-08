@@ -44,6 +44,8 @@ export interface LLMResponse {
   provider: LLMProviderType;
   model: LLMModel;
   duration: number;
+  error?: boolean;
+  errorCategory?: string;
 }
 
 export const MODEL_TO_PROVIDER: Record<LLMModel, LLMProviderType> = {

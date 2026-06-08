@@ -32,6 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { parseLLMError } from "@/lib/llmError";
 
 interface StrategyAgentProps {
   open: boolean;
@@ -175,10 +176,10 @@ export function StrategyAgent({
         setCodeResult({ code: data.code, explanation: data.explanation, className: data.className });
         setGeneratedEdgeAssessment(data.edgeAssessment);
       }
-    } catch {
+    } catch (err) {
       toast({
         title: "Generation failed",
-        description: "Check your OpenAI API key in Settings.",
+        description: parseLLMError(err) ?? "Check your OpenAI API key in Settings.",
         variant: "destructive",
       });
     } finally {
@@ -202,8 +203,12 @@ export function StrategyAgent({
         setCodeResult(data as CodeResult);
         setPendingRefinePayload(null);
       }
-    } catch {
-      toast({ title: "Refinement failed", variant: "destructive" });
+    } catch (err) {
+      toast({
+        title: "Refinement failed",
+        description: parseLLMError(err) ?? "Could not refine the strategy.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -247,8 +252,12 @@ export function StrategyAgent({
       const res = await apiRequest("POST", "/api/lean/agent/explain", { code, model: "gpt-5" });
       const data = await res.json();
       setExplanation(data.explanation);
-    } catch {
-      toast({ title: "Explanation failed", variant: "destructive" });
+    } catch (err) {
+      toast({
+        title: "Explanation failed",
+        description: parseLLMError(err) ?? "Could not explain the strategy.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -274,8 +283,12 @@ export function StrategyAgent({
       } else {
         setSuggestions(JSON.stringify(data.suggestions, null, 2));
       }
-    } catch {
-      toast({ title: "Optimization failed", variant: "destructive" });
+    } catch (err) {
+      toast({
+        title: "Optimization failed",
+        description: parseLLMError(err) ?? "Could not suggest optimizations.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }

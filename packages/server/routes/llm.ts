@@ -5,6 +5,7 @@ import { parseSignal } from "../services/signalParser";
 import { eventBus } from "../ws";
 import { chatRequestSchema } from "@shared/schema";
 import type { LLMModel } from "../services/llm/types";
+import { llmErrorToResponse } from "../lib/llmErrorResponse";
 
 const SYSTEM_PROMPT = `You are an expert AI trading assistant with deep knowledge of algorithmic trading, portfolio management, and market analysis. You have access to the user's real trading data and should provide personalized, actionable insights.
 
@@ -32,17 +33,17 @@ export function registerLLMRoutes(app: Express) {
     try {
       const parsed = chatRequestSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ 
-          error: "Invalid request", 
-          details: parsed.error.errors 
+        return res.status(400).json({
+          error: "Invalid request",
+          details: parsed.error.errors,
         });
       }
 
       const { message, provider, model, context, stream } = parsed.data;
 
-      await storage.createChatMessage({ 
-        role: "user", 
-        content: message, 
+      await storage.createChatMessage({
+        role: "user",
+        content: message,
         context,
         provider,
         model,
@@ -54,7 +55,7 @@ export function registerLLMRoutes(app: Express) {
         content: m.content,
       }));
 
-      const contextPrompt = context 
+      const contextPrompt = context
         ? `\n\nCurrent Trading Context:\n${JSON.stringify(context, null, 2)}`
         : "";
 
@@ -70,68 +71,78 @@ export function registerLLMRoutes(app: Express) {
 
         let fullResponse = "";
 
-        for await (const { token, done } of llmService.stream(messages, {
-          model: model as LLMModel,
-          maxTokens: 1024,
-        })) {
-          fullResponse += token;
-          res.write(`data: ${JSON.stringify({ token, done })}\n\n`);
+        try {
+          for await (const { token, done } of llmService.stream(messages, {
+            model: model as LLMModel,
+            maxTokens: 1024,
+          })) {
+            fullResponse += token;
+            res.write(`data: ${JSON.stringify({ token, done })}\n\n`);
 
-          if (done) {
-            const savedMessage = await storage.createChatMessage({
-              role: "assistant",
-              content: fullResponse,
-              provider,
-              model,
-            });
+            if (done) {
+              const savedMessage = await storage.createChatMessage({
+                role: "assistant",
+                content: fullResponse,
+                provider,
+                model,
+              });
 
-            const signal = parseSignal(fullResponse, provider!, model!);
-            if (signal) {
-              eventBus.emit("signal:detected", signal);
-              res.write(`data: ${JSON.stringify({ signal })}\n\n`);
+              const signal = parseSignal(fullResponse, provider!, model!);
+              if (signal) {
+                eventBus.emit("signal:detected", signal);
+                res.write(`data: ${JSON.stringify({ signal })}\n\n`);
+              }
+
+              res.write(
+                `data: ${JSON.stringify({
+                  message: fullResponse,
+                  id: savedMessage.id,
+                  provider,
+                  model,
+                  signal,
+                })}\n\n`
+              );
             }
-
-            res.write(`data: ${JSON.stringify({ 
-              message: fullResponse, 
-              id: savedMessage.id,
-              provider,
-              model,
-              signal,
-            })}\n\n`);
           }
+        } catch (streamErr) {
+          const { body } = llmErrorToResponse(streamErr);
+          res.write(
+            `data: ${JSON.stringify({ type: "error", ...body.error })}\n\n`
+          );
         }
 
         res.end();
-      } else {
-        const response = await llmService.complete(messages, {
-          model: model as LLMModel,
-          maxTokens: 1024,
-        });
-
-        const savedMessage = await storage.createChatMessage({
-          role: "assistant",
-          content: response.content,
-          provider: response.provider,
-          model: response.model,
-        });
-
-        const signal = parseSignal(response.content, response.provider, response.model);
-        if (signal) {
-          eventBus.emit("signal:detected", signal);
-        }
-
-        res.json({
-          message: response.content,
-          id: savedMessage.id,
-          provider: response.provider,
-          model: response.model,
-          duration: response.duration,
-          signal,
-        });
+        return;
       }
+
+      const response = await llmService.complete(messages, {
+        model: model as LLMModel,
+        maxTokens: 1024,
+      });
+
+      const savedMessage = await storage.createChatMessage({
+        role: "assistant",
+        content: response.content,
+        provider: response.provider,
+        model: response.model,
+      });
+
+      const signal = parseSignal(response.content, response.provider, response.model);
+      if (signal) {
+        eventBus.emit("signal:detected", signal);
+      }
+
+      res.json({
+        message: response.content,
+        id: savedMessage.id,
+        provider: response.provider,
+        model: response.model,
+        duration: response.duration,
+        signal,
+      });
     } catch (error) {
-      console.error("Chat API error:", error);
-      res.status(500).json({ error: "Failed to get AI response" });
+      const { status, body } = llmErrorToResponse(error);
+      res.status(status).json(body);
     }
   });
 
@@ -140,8 +151,8 @@ export function registerLLMRoutes(app: Express) {
       const { message, models, context } = req.body;
 
       if (!message || !Array.isArray(models) || models.length === 0) {
-        return res.status(400).json({ 
-          error: "Message and models array required" 
+        return res.status(400).json({
+          error: "Message and models array required",
         });
       }
 
@@ -161,14 +172,15 @@ export function registerLLMRoutes(app: Express) {
       );
 
       const resultsWithSignals = results.map((result) => {
+        if (result.error) return result;
         const signal = parseSignal(result.content, result.provider, result.model);
         return { ...result, signal };
       });
 
       res.json({ results: resultsWithSignals });
     } catch (error) {
-      console.error("Arena compare error:", error);
-      res.status(500).json({ error: "Failed to compare models" });
+      const { status, body } = llmErrorToResponse(error);
+      res.status(status).json(body);
     }
   });
 

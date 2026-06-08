@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SignalCard, type TradeSignal } from "@/components/llm/SignalCard";
 import { apiRequest } from "@/lib/queryClient";
+import { parseLLMError } from "@/lib/llmError";
+import { AlertTriangle } from "lucide-react";
 import {
   Swords,
   Send,
@@ -48,6 +50,8 @@ interface ArenaResult {
   model: LLMModel;
   duration: number;
   signal?: TradeSignal;
+  error?: boolean;
+  errorCategory?: string;
 }
 
 export default function Arena() {
@@ -68,8 +72,21 @@ export default function Arena() {
       return response.json();
     },
     onSuccess: (data) => {
-      setResults(data.results);
+      setResults(data.results ?? []);
       setVotes({} as any);
+    },
+    onError: (err) => {
+      const msg = parseLLMError(err) ?? "Failed to compare models.";
+      setResults(
+        selectedModels.map((model) => ({
+          content: msg,
+          provider: model.startsWith("gpt") ? "openai" : model.startsWith("claude") ? "anthropic" : "gemini",
+          model,
+          duration: 0,
+          error: true,
+          errorCategory: "unknown",
+        }))
+      );
     },
   });
 
@@ -216,35 +233,44 @@ export default function Arena() {
                   </div>
                 </CardHeader>
                 <CardContent className="flex-1 space-y-4">
-                  <div className="prose prose-sm dark:prose-invert max-h-[300px] overflow-y-auto">
-                    <p className="whitespace-pre-wrap">{result.content}</p>
-                  </div>
+                  {result.error ? (
+                    <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-400">
+                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                      <span>{result.content}</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="prose prose-sm dark:prose-invert max-h-[300px] overflow-y-auto">
+                        <p className="whitespace-pre-wrap">{result.content}</p>
+                      </div>
 
-                  {result.signal && (
-                    <SignalCard signal={result.signal} />
+                      {result.signal && (
+                        <SignalCard signal={result.signal} />
+                      )}
+
+                      <div className="flex items-center gap-2 pt-2 border-t">
+                        <span className="text-sm text-muted-foreground">
+                          Rate this response:
+                        </span>
+                        <Button
+                          variant={vote === "up" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleVote(result.model, "up")}
+                          className="gap-1"
+                        >
+                          <ThumbsUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant={vote === "down" ? "destructive" : "outline"}
+                          size="sm"
+                          onClick={() => handleVote(result.model, "down")}
+                          className="gap-1"
+                        >
+                          <ThumbsDown className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </>
                   )}
-
-                  <div className="flex items-center gap-2 pt-2 border-t">
-                    <span className="text-sm text-muted-foreground">
-                      Rate this response:
-                    </span>
-                    <Button
-                      variant={vote === "up" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => handleVote(result.model, "up")}
-                      className="gap-1"
-                    >
-                      <ThumbsUp className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant={vote === "down" ? "destructive" : "outline"}
-                      size="sm"
-                      onClick={() => handleVote(result.model, "down")}
-                      className="gap-1"
-                    >
-                      <ThumbsDown className="h-3 w-3" />
-                    </Button>
-                  </div>
                 </CardContent>
               </Card>
             );

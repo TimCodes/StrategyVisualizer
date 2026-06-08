@@ -9,6 +9,7 @@ import { Send, Bot, User, TrendingUp, BarChart3, Activity, Trash2, Wifi, WifiOff
 import { TradingService } from "@/services/tradingServices";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { parseLLMError } from "@/lib/llmError";
 import { useSocket, useSignalDetection } from "@/hooks/useSocket";
 import { ModelSelector, type LLMModel } from "@/components/llm/ModelSelector";
 import { SignalCard, SignalList, type TradeSignal } from "@/components/llm/SignalCard";
@@ -177,8 +178,8 @@ export default function Chat() {
       queryClient.invalidateQueries({ queryKey: ["/api/chat/messages"] });
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to get AI response. Please try again.",
+        title: "AI request failed",
+        description: parseLLMError(error) ?? "Failed to get AI response. Please try again.",
         variant: "destructive",
       });
     } finally {

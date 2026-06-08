@@ -14,6 +14,7 @@ import {
 } from "../services/lean-agent";
 import { isLeanAvailable, runLeanBacktest } from "../services/lean-runner";
 import { emitToSocket, getIO } from "../ws";
+import { llmErrorToResponse } from "../lib/llmErrorResponse";
 
 function trialPromptSummary(s: string | undefined): string | undefined {
   if (!s) return undefined;
@@ -303,11 +304,8 @@ export function registerLeanRoutes(app: Express) {
           }
         }
       } catch (error) {
-        console.error("Strategy generation error:", error);
-        res.status(500).json({
-          error: "Failed to generate strategy",
-          details: (error as Error).message,
-        });
+        const { status, body } = llmErrorToResponse(error);
+        res.status(status).json(body);
       }
     }
   );
@@ -358,11 +356,8 @@ export function registerLeanRoutes(app: Express) {
         console.warn("⚠️  TRIAL NOT RECORDED:", (trialErr as Error).message);
       }
     } catch (error) {
-      console.error("Strategy refinement error:", error);
-      res.status(500).json({
-        error: "Failed to refine strategy",
-        details: (error as Error).message,
-      });
+      const { status, body } = llmErrorToResponse(error);
+      res.status(status).json(body);
     }
   });
 
@@ -382,11 +377,8 @@ export function registerLeanRoutes(app: Express) {
         );
         res.json({ explanation });
       } catch (error) {
-        console.error("Strategy explain error:", error);
-        res.status(500).json({
-          error: "Failed to explain strategy",
-          details: (error as Error).message,
-        });
+        const { status, body } = llmErrorToResponse(error);
+        res.status(status).json(body);
       }
     }
   );
@@ -416,11 +408,8 @@ export function registerLeanRoutes(app: Express) {
           console.warn("⚠️  TRIAL NOT RECORDED:", (trialErr as Error).message);
         }
       } catch (error) {
-        console.error("Strategy optimize error:", error);
-        res.status(500).json({
-          error: "Failed to optimize strategy",
-          details: (error as Error).message,
-        });
+        const { status, body } = llmErrorToResponse(error);
+        res.status(status).json(body);
       }
     }
   );

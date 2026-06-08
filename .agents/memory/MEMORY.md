@@ -2,3 +2,4 @@
 - [DSR formula source](dsr-formula.md) — Bailey & Lopez de Prado 2014 Deflated Sharpe Ratio implementation details and edge cases.
 - [Storage try/catch pattern](storage-pattern.md) — all storage methods do in-memory first, then try DB in catch block (Neon WebSocket throws on cold connections).
 - [Strategy persistence pattern](strategy-persistence.md) — strategies use single-source-of-truth (db when available, Map when null); jsonb Date fields must be rehydrated in mapDbStrategy; seedDbIfNeeded is idempotent via count check.
+- [LLM hardening architecture](llm-hardening.md) — withResilience + classifyProviderError + llmErrorToResponse; env LLM_TIMEOUT_MS/LLM_MAX_RETRIES; parseLLMError on client.
