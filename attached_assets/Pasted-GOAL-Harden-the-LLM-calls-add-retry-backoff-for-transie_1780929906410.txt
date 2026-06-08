@@ -1,0 +1,83 @@
+GOAL
+Harden the LLM calls: add retry/backoff for transient failures, per-attempt timeouts,
+typed/normalized errors, and clean surfacing to the UI — instead of raw errors bubbling up
+as opaque 500s. Centralize this in the LLM dispatcher so every caller (generate, refine,
+optimize, chat, arena) benefits without touching each call site.
+
+CONFIRMED CODEBASE FACTS (verified)
+- The LLM abstraction is packages/server/services/llm/: index.ts (LLMService with
+  complete(), stream(), compareModels(), getProviderStatus()), types.ts (LLMProvider
+  interface, LLMModel, MODEL_TO_PROVIDER), and providers openai.ts / anthropic.ts /
+  gemini.ts. routes/llm.ts exposes them.
+- Today complete() just calls provider.complete() with NO retry, NO timeout, NO error
+  normalization — errors bubble raw. compareModels() catches per-model and stuffs
+  `Error: ${msg}` into content (crude). stream() has no error handling.
+- The agent flows (generate/refine/optimize in lean-agent.ts) go through llmService, not
+  raw SDKs — VERIFY this; if any path calls a provider SDK directly, route it through
+  llmService instead so the hardening applies uniformly.
+- Do NOT change model strings, providers, or required secrets. Missing API keys should
+  surface as a clean error, not a crash.
+
+TASK 1 — Typed, normalized errors (new packages/server/services/llm/errors.ts)
+- Define LLMErrorCategory = "rate_limit" | "auth" | "timeout" | "invalid_request" |
+  "server_error" | "unavailable" | "unknown".
+- class LLMError extends Error with: category, provider, model, statusCode?, retryable:
+  boolean, retryAfterMs?, userMessage (safe to display).
+- classifyProviderError(err, provider, model): LLMError — map each SDK's errors by status:
+  * 429 -> rate_limit, retryable, parse Retry-After header/seconds into retryAfterMs
+  * 401/403 -> auth, NOT retryable, userMessage like "<provider> API key missing or invalid"
+  * 408 or abort/timeout -> timeout, retryable
+  * 400/422 -> invalid_request, NOT retryable
+  * 5xx -> server_error, retryable
+  * network errors (ECONNRESET/ENOTFOUND/fetch failed) -> unavailable, retryable
+  * else -> unknown, NOT retryable
+  (Handle the differing shapes: OpenAI/Anthropic SDK errors expose `status`; Gemini errors
+  vary — inspect status/code/message defensively.)
+
+TASK 2 — Resilience wrapper in LLMService (index.ts)
+- Add withResilience<T>(fn, { provider, model }): Promise<T>:
+  * Per-attempt timeout via AbortController (or Promise.race), env LLM_TIMEOUT_MS default
+    60000; on expiry throw a timeout LLMError.
+  * On thrown error, classifyProviderError first. If retryable, retry up to
+    LLM_MAX_RETRIES (env, default 3) with exponential backoff + jitter; if retryAfterMs is
+    present, wait at least that long. Re-throw non-retryable LLMError immediately.
+- Wrap complete() in withResilience.
+- For stream(): apply the timeout and classify errors; only retry if the failure happens
+  BEFORE the first token is emitted (can't safely replay a partial stream). Once tokens
+  have started, surface the error to the consumer rather than retrying.
+- compareModels(): keep per-model isolation, but on failure store the normalized
+  userMessage + an `error: true` flag on that model's result (don't break the others).
+- Pass timeout/retry config via env with safe defaults; add LLM_MAX_RETRIES and
+  LLM_TIMEOUT_MS to .env.example. No new secrets.
+
+TASK 3 — Surface cleanly in routes (routes/llm.ts + the agent routes)
+- Catch LLMError and respond with structured JSON:
+    { error: { category, message: userMessage, provider, model, retryable } }
+  and an HTTP status mapped from category: rate_limit->429, auth->401, unavailable->503,
+  timeout->504, server_error->502, invalid_request->400, unknown->500.
+- For STREAMING routes (Socket.IO/SSE used by chat and the agent), emit a structured error
+  event (e.g., { type: "error", message, category }) so the client can render it instead of
+  the stream silently dying.
+
+TASK 4 — Client surfacing (light, no rebuild)
+- Where StrategyAgent.tsx, Chat, and Arena call these endpoints, detect the structured error
+  shape and show a clear toast/inline message using error.message + category (e.g.,
+  "Rate limited by OpenAI — try again shortly", "Anthropic API key not configured"). Never
+  dump raw stack traces. For streaming, render the emitted error event.
+
+TASK 5 — Tests (pure logic, no network)
+- Unit-test classifyProviderError on representative inputs (429->rate_limit+retryable,
+  401->auth+not-retryable, 5xx->server_error+retryable, 400->invalid_request+not-retryable).
+- Unit-test withResilience with a mock fn: retries on retryable then succeeds; gives up after
+  LLM_MAX_RETRIES; does NOT retry non-retryable. Mock timers so the test is fast.
+
+ACCEPTANCE CRITERIA
+- Transient failures (429/5xx/timeout/network) are retried with backoff, honoring
+  Retry-After; permanent failures (401/400) are not retried.
+- Routes return structured errors with the correct status codes; streaming routes emit an
+  error event; the UI shows clean messages, not raw errors.
+- compareModels still isolates per-model failures (others succeed).
+- New tests pass; `npx tsc --noEmit` clean; `npx vitest run` green; app builds.
+
+Show me errors.ts (classifyProviderError + LLMError), the withResilience wrapper and its use
+in complete()/stream(), the route error mapping, and the new tests.
