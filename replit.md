@@ -90,7 +90,7 @@ Every transition appends one entry to `gateHistory` recording the stage it occur
 - Generic `PATCH /api/strategies/:id` **cannot** mutate `stage`, `gateStatus`, or `gateHistory` — those keys are stripped; gate transitions must go through the dedicated endpoint.
 
 ### Persistence Note
-Strategies (including pipeline state) are stored **in-memory** (MemStorage). All state resets on server restart. Persisting strategies to Postgres is a separate future step.
+All core entities are persisted to Postgres when `DATABASE_URL` is set, with an in-memory Map fallback when it is not (or when the DB is unreachable): strategies (incl. pipeline state), settings, LEAN projects/backtests, trials, gate results, **trades, backtest results, and chat messages** (`trades`, `backtest_results`, `chat_messages` tables added in Phase 1). Seeding is idempotent per table via count guards. Without `DATABASE_URL`, state still resets on restart. Run `npm run db:push` after provisioning a database to create the tables.
 
 ### UI
 - Each strategy card on `/strategies` shows a **stage badge** (e.g. "Live", "Idea") and a **gate-status badge** (color-coded: green = passed, amber = in progress, red = failed, gray = discarded).

@@ -274,15 +274,52 @@ export const strategiesTable = pgTable("strategies", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const insertTradeSchema = tradeSchema.omit({ 
+export const insertTradeSchema = tradeSchema.omit({
   id: true,
   pnl: true,
   timestamp: true
 });
 
-export const insertBacktestSchema = backtestResultSchema.omit({ 
-  id: true, 
-  createdAt: true 
+export const insertBacktestSchema = backtestResultSchema.omit({
+  id: true,
+  createdAt: true
+});
+
+export const tradesTable = pgTable("trades", {
+  id: text("id").primaryKey(),
+  symbol: text("symbol").notNull(),
+  type: text("type").notNull(),
+  quantity: real("quantity").notNull(),
+  price: real("price").notNull(),
+  pnl: real("pnl").notNull().default(0),
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+  strategyId: text("strategy_id").notNull(),
+});
+
+export const backtestResultsTable = pgTable("backtest_results", {
+  id: text("id").primaryKey(),
+  strategyName: text("strategy_name").notNull(),
+  strategyDescription: text("strategy_description").notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  totalReturn: real("total_return").notNull().default(0),
+  sharpeRatio: real("sharpe_ratio").notNull().default(0),
+  maxDrawdown: real("max_drawdown").notNull().default(0),
+  winRate: real("win_rate").notNull().default(0),
+  totalTrades: integer("total_trades").notNull().default(0),
+  status: text("status").notNull(),
+  dataSource: text("data_source").notNull().default("simulated"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const chatMessagesTable = pgTable("chat_messages", {
+  id: text("id").primaryKey(),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+  context: jsonb("context"),
+  provider: text("provider"),
+  model: text("model"),
 });
 
 export type Strategy = z.infer<typeof strategySchema>;

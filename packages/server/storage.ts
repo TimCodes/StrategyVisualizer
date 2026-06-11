@@ -35,6 +35,9 @@ import {
   IncubationObservation,
   WalkForwardConfig,
   strategiesTable,
+  tradesTable,
+  backtestResultsTable,
+  chatMessagesTable,
 } from "@shared/schema";
 import { getDb } from "./db";
 
@@ -517,10 +520,30 @@ export class MemStorage implements IStorage {
   }
 
   async getTrades(): Promise<Trade[]> {
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(tradesTable).orderBy(tradesTable.timestamp);
+        return rows.map((r) => this.mapDbTrade(r));
+      }
+    } catch {
+      // DB unavailable — fall through to Map
+    }
     return Array.from(this.trades.values());
   }
 
   async getTradesByStrategy(strategyId: string): Promise<Trade[]> {
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(tradesTable)
+          .where(eq(tradesTable.strategyId, strategyId))
+          .orderBy(tradesTable.timestamp);
+        return rows.map((r) => this.mapDbTrade(r));
+      }
+    } catch {
+      // DB unavailable — fall through to Map
+    }
     return Array.from(this.trades.values()).filter(
       (trade) => trade.strategyId === strategyId
     );
@@ -528,11 +551,14 @@ export class MemStorage implements IStorage {
 
   async createTrade(data: InsertTrade): Promise<Trade> {
     const id = randomUUID();
-    
-    const existingTrades = Array.from(this.trades.values())
+
+    // FIFO cost basis must consider all prior trades for the symbol,
+    // from the DB when available so P&L survives restarts.
+    const allTrades = await this.getTrades();
+    const existingTrades = allTrades
       .filter((t) => t.symbol.toUpperCase() === data.symbol.toUpperCase())
       .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-    
+
     let position = 0;
     let totalCost = 0;
     
@@ -573,10 +599,38 @@ export class MemStorage implements IStorage {
       pnl,
     };
     this.trades.set(id, trade);
+    try {
+      const db = await getDb();
+      if (db) {
+        const [row] = await db.insert(tradesTable).values({
+          id: trade.id,
+          symbol: trade.symbol,
+          type: trade.type,
+          quantity: trade.quantity,
+          price: trade.price,
+          pnl: trade.pnl,
+          timestamp: trade.timestamp,
+          strategyId: trade.strategyId,
+        }).returning();
+        if (row) return this.mapDbTrade(row);
+      }
+    } catch {
+      // in-memory copy already set above
+    }
     return trade;
   }
 
   async getBacktestResults(): Promise<BacktestResult[]> {
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(backtestResultsTable)
+          .orderBy(desc(backtestResultsTable.createdAt));
+        return rows.map((r) => this.mapDbBacktest(r));
+      }
+    } catch {
+      // DB unavailable — fall through to Map
+    }
     return Array.from(this.backtestResults.values());
   }
 
@@ -588,10 +642,38 @@ export class MemStorage implements IStorage {
       createdAt: new Date(),
     };
     this.backtestResults.set(id, backtest);
+    try {
+      const db = await getDb();
+      if (db) {
+        const [row] = await db.insert(backtestResultsTable)
+          .values(this.backtestToDbValues(backtest))
+          .returning();
+        if (row) return this.mapDbBacktest(row);
+      }
+    } catch {
+      // in-memory copy already set above
+    }
     return backtest;
   }
 
   async updateBacktest(id: string, data: Partial<InsertBacktest>): Promise<BacktestResult> {
+    try {
+      const db = await getDb();
+      if (db) {
+        const [existing] = await db.select().from(backtestResultsTable)
+          .where(eq(backtestResultsTable.id, id));
+        if (!existing) throw new Error("Backtest not found");
+        const updated: BacktestResult = { ...this.mapDbBacktest(existing), ...data };
+        const [row] = await db.update(backtestResultsTable)
+          .set(this.backtestToDbValues(updated))
+          .where(eq(backtestResultsTable.id, id))
+          .returning();
+        return row ? this.mapDbBacktest(row) : updated;
+      }
+    } catch (err) {
+      if ((err as Error).message === "Backtest not found") throw err;
+      // DB connection error — fall through to Map
+    }
     const existing = this.backtestResults.get(id);
     if (!existing) {
       throw new Error("Backtest not found");
@@ -602,8 +684,8 @@ export class MemStorage implements IStorage {
   }
 
   async getPortfolioMetrics(): Promise<PortfolioMetrics> {
-    const trades = Array.from(this.trades.values());
-    
+    const trades = await this.getTrades();
+
     if (trades.length === 0) {
       return {
         totalValue: 100000,
@@ -671,6 +753,16 @@ export class MemStorage implements IStorage {
   }
 
   async getChatMessages(): Promise<ChatMessage[]> {
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(chatMessagesTable)
+          .orderBy(chatMessagesTable.timestamp);
+        return rows.map((r) => this.mapDbChatMessage(r));
+      }
+    } catch {
+      // DB unavailable — fall through to memory
+    }
     return this.chatMessages;
   }
 
@@ -681,11 +773,36 @@ export class MemStorage implements IStorage {
       timestamp: new Date(),
     };
     this.chatMessages.push(message);
+    try {
+      const db = await getDb();
+      if (db) {
+        const [row] = await db.insert(chatMessagesTable).values({
+          id: message.id,
+          role: message.role,
+          content: message.content,
+          timestamp: message.timestamp,
+          context: message.context ?? null,
+          provider: message.provider ?? null,
+          model: message.model ?? null,
+        }).returning();
+        if (row) return this.mapDbChatMessage(row);
+      }
+    } catch {
+      // in-memory copy already pushed above
+    }
     return message;
   }
 
   async clearChatHistory(): Promise<void> {
     this.chatMessages = [];
+    try {
+      const db = await getDb();
+      if (db) {
+        await db.delete(chatMessagesTable);
+      }
+    } catch {
+      // in-memory copy already cleared above
+    }
   }
 
   async getSettings(): Promise<Settings> {
@@ -1313,10 +1430,96 @@ export class MemStorage implements IStorage {
     };
   }
 
+  private mapDbTrade(row: typeof tradesTable.$inferSelect): Trade {
+    return {
+      id: row.id,
+      symbol: row.symbol,
+      type: row.type as Trade["type"],
+      quantity: row.quantity,
+      price: row.price,
+      pnl: row.pnl,
+      timestamp: row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp),
+      strategyId: row.strategyId,
+    };
+  }
+
+  private backtestToDbValues(b: BacktestResult) {
+    return {
+      id: b.id,
+      strategyName: b.strategyName,
+      strategyDescription: b.strategyDescription,
+      startDate: b.startDate,
+      endDate: b.endDate,
+      totalReturn: b.totalReturn,
+      sharpeRatio: b.sharpeRatio,
+      maxDrawdown: b.maxDrawdown,
+      winRate: b.winRate,
+      totalTrades: b.totalTrades,
+      status: b.status,
+      dataSource: b.dataSource,
+      createdAt: b.createdAt,
+    };
+  }
+
+  private mapDbBacktest(row: typeof backtestResultsTable.$inferSelect): BacktestResult {
+    return {
+      id: row.id,
+      strategyName: row.strategyName,
+      strategyDescription: row.strategyDescription,
+      startDate: row.startDate instanceof Date ? row.startDate : new Date(row.startDate),
+      endDate: row.endDate instanceof Date ? row.endDate : new Date(row.endDate),
+      totalReturn: row.totalReturn,
+      sharpeRatio: row.sharpeRatio,
+      maxDrawdown: row.maxDrawdown,
+      winRate: row.winRate,
+      totalTrades: row.totalTrades,
+      status: row.status as BacktestResult["status"],
+      dataSource: (row.dataSource as BacktestResult["dataSource"]) ?? "simulated",
+      createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
+    };
+  }
+
+  private mapDbChatMessage(row: typeof chatMessagesTable.$inferSelect): ChatMessage {
+    return {
+      id: row.id,
+      role: row.role as ChatMessage["role"],
+      content: row.content,
+      timestamp: row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp),
+      context: row.context ?? undefined,
+      provider: (row.provider as ChatMessage["provider"]) ?? undefined,
+      model: (row.model as ChatMessage["model"]) ?? undefined,
+    };
+  }
+
   private async seedDbIfNeeded(): Promise<void> {
     try {
       const db = await getDb();
       if (!db) return;
+
+      // Each table seeds independently and idempotently (count-guarded)
+      const [{ cnt: tradeCnt }] = await db.select({ cnt: count() }).from(tradesTable);
+      if (tradeCnt === 0) {
+        for (const t of Array.from(this.trades.values())) {
+          await db.insert(tradesTable).values({
+            id: t.id,
+            symbol: t.symbol,
+            type: t.type,
+            quantity: t.quantity,
+            price: t.price,
+            pnl: t.pnl,
+            timestamp: t.timestamp,
+            strategyId: t.strategyId,
+          });
+        }
+      }
+
+      const [{ cnt: btCnt }] = await db.select({ cnt: count() }).from(backtestResultsTable);
+      if (btCnt === 0) {
+        for (const b of Array.from(this.backtestResults.values())) {
+          await db.insert(backtestResultsTable).values(this.backtestToDbValues(b));
+        }
+      }
+
       const [{ cnt }] = await db.select({ cnt: count() }).from(strategiesTable);
       if (cnt > 0) return;
       const seeds: Strategy[] = [
