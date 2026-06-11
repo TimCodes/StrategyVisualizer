@@ -31,6 +31,25 @@ describe("LeanUnavailableError", () => {
   });
 });
 
+describe("projectName validation", () => {
+  it("rejects path-traversal project names before touching the filesystem", async () => {
+    const { runLeanBacktest } = await import("../lean-runner");
+    await expect(
+      runLeanBacktest({ projectName: "../../etc/evil", code: "class T: pass" })
+    ).rejects.toThrow(/Invalid project name/);
+  });
+
+  it("rejects project names with path separators and spaces", async () => {
+    const { runLeanBacktest } = await import("../lean-runner");
+    await expect(
+      runLeanBacktest({ projectName: "foo/bar", code: "class T: pass" })
+    ).rejects.toThrow(/Invalid project name/);
+    await expect(
+      runLeanBacktest({ projectName: "foo bar", code: "class T: pass" })
+    ).rejects.toThrow(/Invalid project name/);
+  });
+});
+
 describe("parseLeanResults", () => {
   const result = parseLeanResults(fixture as Record<string, unknown>);
 

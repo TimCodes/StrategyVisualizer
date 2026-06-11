@@ -44,7 +44,7 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     res.status(status).json({ message });
-    throw err;
+    console.error(err);
   });
 
   // importantly only setup vite in development and after
@@ -64,7 +64,8 @@ app.use((req, res, next) => {
   server.listen({
     port,
     host: "0.0.0.0",
-    reusePort: true,
+    // reusePort is not supported on Windows (ENOTSUP); keep it for Linux/Replit
+    ...(process.platform !== "win32" ? { reusePort: true } : {}),
   }, () => {
     log(`serving on port ${port}`);
   });

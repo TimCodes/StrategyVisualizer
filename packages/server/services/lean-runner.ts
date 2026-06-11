@@ -137,6 +137,12 @@ export async function runLeanBacktest({
   projectName: string;
   code: string;
 }): Promise<ParsedLeanResult> {
+  if (!/^[A-Za-z0-9_-]+$/.test(projectName)) {
+    throw new Error(
+      `Invalid project name "${projectName}". Only letters, numbers, hyphens, and underscores are allowed.`
+    );
+  }
+
   if (!isLeanAvailable()) {
     throw new LeanUnavailableError();
   }
