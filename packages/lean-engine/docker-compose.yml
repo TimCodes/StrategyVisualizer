@@ -1,0 +1,27 @@
+# ─────────────────────────────────────────────────────────────
+# Convenience compose file for BUILDING and SMOKE-TESTING the
+# praxis/lean-cli image:
+#
+#   docker compose build
+#   docker compose run --rm lean-cli                 # prints lean version
+#   docker compose run --rm lean-cli lean --help
+#
+# Actual backtests go through bin/lean-docker.ps1 / .sh / .exe:
+# the workspace must be mirror-mounted at a host-daemon-resolvable
+# path that depends on the absolute workspace location, which the
+# wrapper scripts compute per run — a static compose mount cannot
+# express that portably.
+# ─────────────────────────────────────────────────────────────
+services:
+  lean-cli:
+    build:
+      context: .
+      args:
+        LEAN_CLI_VERSION: "1.0.200"
+    image: praxis/lean-cli:1.0.200
+    volumes:
+      # Host Docker socket — lets the lean CLI start the LEAN engine
+      # (quantconnect/lean) as a sibling container on the host daemon.
+      # Works as-is with Docker Desktop on Windows (Linux containers).
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: ["lean", "--version"]

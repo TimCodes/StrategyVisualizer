@@ -14,7 +14,32 @@
 
 ---
 
-## Local setup steps (to be done later — not now)
+## Option B: Docker (recommended)
+
+Instead of installing Python and the `lean` CLI on your machine (steps 2–3
+below), you can run the CLI from a Docker image. Only Docker Desktop is
+required. See **`packages/lean-engine/README.md`** for the full instructions;
+the short version:
+
+```powershell
+cd packages/lean-engine
+npm run build        # build the praxis/lean-cli image (pinned CLI version)
+npm run build:shim   # Windows only: compile bin/lean-docker.exe
+```
+
+Then initialize the workspace through the wrapper
+(`bin\lean-docker.cmd init` from inside `lean-workspace/`) and set in `.env`:
+
+```ini
+LEAN_COMMAND=C:\path\to\repo\packages\lean-engine\bin\lean-docker.exe   # Windows
+# LEAN_COMMAND=/path/to/repo/packages/lean-engine/bin/lean-docker.sh   # Linux/macOS
+```
+
+Steps 1 and 4–8 below still apply; steps 2–3 are replaced by the wrapper.
+
+---
+
+## Option A: Manual local setup steps (to be done later — not now)
 
 ### 1. Install Docker
 
