@@ -1,0 +1,3 @@
+# Compiled Windows shim (build locally with: npm run build:shim)
+bin/*.exe
+bin/*.pdb

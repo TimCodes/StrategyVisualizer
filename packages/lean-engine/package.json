@@ -1,0 +1,16 @@
+{
+  "name": "@app/lean-engine",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dockerized QuantConnect LEAN CLI for the Praxis backtest runner",
+  "scripts": {
+    "build": "docker build --build-arg LEAN_CLI_VERSION=1.0.200 -t praxis/lean-cli:1.0.200 -t praxis/lean-cli:latest .",
+    "build:shim": "%WINDIR%\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe /nologo /optimize /out:bin\\lean-docker.exe bin\\lean-docker-shim.cs",
+    "verify": "docker run --rm praxis/lean-cli:1.0.200 lean --version",
+    "lean": "powershell -NoProfile -ExecutionPolicy Bypass -File ./bin/lean-docker.ps1",
+    "lean:sh": "./bin/lean-docker.sh",
+    "backtest": "powershell -NoProfile -ExecutionPolicy Bypass -File ./bin/lean-docker.ps1 backtest",
+    "backtest:sh": "./bin/lean-docker.sh backtest"
+  }
+}
