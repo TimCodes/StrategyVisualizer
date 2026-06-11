@@ -1,0 +1,158 @@
+{
+ "statistics": {
+  "Total Orders": "3",
+  "Average Win": "11.36%",
+  "Average Loss": "0%",
+  "Compounding Annual Return": "29.363%",
+  "Drawdown": "5.500%",
+  "Expectancy": "0",
+  "Start Equity": "100000",
+  "End Equity": "129332.53",
+  "Net Profit": "29.333%",
+  "Sharpe Ratio": "2.089",
+  "Sortino Ratio": "2.396",
+  "Probabilistic Sharpe Ratio": "87.852%",
+  "Loss Rate": "0%",
+  "Win Rate": "100%",
+  "Profit-Loss Ratio": "0",
+  "Alpha": "0",
+  "Beta": "0",
+  "Annual Standard Deviation": "0.091",
+  "Annual Variance": "0.008",
+  "Information Ratio": "2.199",
+  "Tracking Error": "0.091",
+  "Treynor Ratio": "0",
+  "Total Fees": "$12.01",
+  "Estimated Strategy Capacity": "$470000000.00",
+  "Lowest Capacity Asset": "SPY R735QTJ8XC9X",
+  "Portfolio Turnover": "0.82%",
+  "Drawdown Recovery": "50"
+ },
+ "charts": {
+  "Strategy Equity": {
+   "name": "Strategy Equity",
+   "chartType": 0,
+   "series": {
+    "Equity": {
+     "name": "Equity",
+     "unit": "$",
+     "index": 0,
+     "seriesType": 2,
+     "values": [
+      [
+       1357016400,
+       100000.0,
+       100000.0,
+       100000.0,
+       100000.0
+      ],
+      [
+       1357102800,
+       100000.0,
+       100000.0,
+       100000.0,
+       100000.0
+      ],
+      [
+       1357160400,
+       100000.0,
+       100000.0,
+       100000.0,
+       100000.0
+      ],
+      [
+       1357189200,
+       100000.0,
+       100000.0,
+       100000.0,
+       100000.0
+      ],
+      [
+       1357246800,
+       99818.7708,
+       99818.7708,
+       99818.7708,
+       99818.7708
+      ],
+      [
+       1388293200,
+       128754.5515,
+       128754.5515,
+       128754.5515,
+       128754.5515
+      ],
+      [
+       1388379600,
+       128754.5515,
+       128754.5515,
+       128754.5515,
+       128754.5515
+      ],
+      [
+       1388437200,
+       128740.6243,
+       128740.6243,
+       128740.6243,
+       128740.6243
+      ],
+      [
+       1388466000,
+       128740.6243,
+       128740.6243,
+       128740.6243,
+       128740.6243
+      ],
+      [
+       1388523600,
+       129332.5339,
+       129332.5339,
+       129332.5339,
+       129332.5339
+      ]
+     ]
+    }
+   }
+  }
+ },
+ "totalPerformance": {
+  "closedTrades": [
+   {
+    "id": "95b17987-7560-4559-8fed-3f98cb2011e2",
+    "symbols": [
+     {
+      "value": "SPY",
+      "id": "SPY R735QTJ8XC9X",
+      "permtick": "SPY"
+     }
+    ],
+    "entryTime": "2013-01-03T21:00:00Z",
+    "entryPrice": 124.392721167,
+    "direction": 0,
+    "quantity": 800.0,
+    "exitTime": "2013-07-02T20:00:00Z",
+    "exitPrice": 138.605669942,
+    "profitLoss": 11370.36,
+    "totalFees": 8.0,
+    "mae": -313.56,
+    "mfe": 14907.5,
+    "duration": "179.23:00:00",
+    "endTradeDrawdown": 6359.33,
+    "isWin": true,
+    "orderIds": [
+     1,
+     2
+    ]
+   }
+  ]
+ },
+ "runtimeStatistics": {
+  "Equity": "$129,332.53",
+  "Fees": "-$12.01",
+  "Holdings": "$128,597.59",
+  "Net Profit": "$11,358.35",
+  "Probabilistic Sharpe Ratio": "87.852%",
+  "Return": "29.33 %",
+  "Unrealized": "$17,970.17",
+  "Volume": "$321,022.12"
+ }
+}

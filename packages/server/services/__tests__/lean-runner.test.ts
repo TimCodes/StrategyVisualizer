@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseLeanResults, isLeanAvailable, LeanUnavailableError } from "../lean-runner";
 import fixture from "./fixtures/lean-sample.json";
+import realFixture from "./fixtures/lean-results-sample.json";
 
 describe("isLeanAvailable", () => {
   it("returns false when LEAN_ENABLED is unset", () => {
@@ -109,6 +110,51 @@ describe("parseLeanResults", () => {
     expect(result.rawResults).toHaveProperty("Statistics");
     expect(result.rawResults).toHaveProperty("Charts");
     expect(result.rawResults).toHaveProperty("TotalPerformance");
+  });
+});
+
+describe("parseLeanResults — real LEAN CLI 1.0.200 output", () => {
+  // Fixture captured from an actual `lean backtest` run on 2026-06-11
+  // (buy-and-hold SPY 2013, QuantConnect sample data), trimmed to the
+  // sections the parser consumes. camelCase top-level keys, candlestick
+  // equity values, numeric trade direction.
+  const result = parseLeanResults(realFixture as Record<string, unknown>);
+
+  it("parses statistics from camelCase top-level keys", () => {
+    expect(result.totalReturn).toBeCloseTo(29.333);
+    expect(result.sharpeRatio).toBeCloseTo(2.089);
+    expect(result.maxDrawdown).toBeCloseTo(5.5);
+    expect(result.winRate).toBeCloseTo(100);
+    expect(result.totalTrades).toBe(3);
+  });
+
+  it("parses candlestick-array equity values [t, o, h, l, c]", () => {
+    expect(result.equityCurve.length).toBe(10);
+    expect(result.equityCurve[0].value).toBe(100000);
+    expect(result.equityCurve[0].date).toBe(new Date(1357016400 * 1000).toISOString());
+    expect(result.equityCurve[result.equityCurve.length - 1].value).toBeCloseTo(129332.53, 1);
+  });
+
+  it("parses closed trades with numeric direction (0 = long)", () => {
+    expect(result.trades.length).toBe(1);
+    const t = result.trades[0];
+    expect(t.direction).toBe("long");
+    expect(t.quantity).toBe(800);
+    expect(t.entryPrice).toBeCloseTo(124.39, 2);
+    expect(t.exitPrice).toBeCloseTo(138.61, 2);
+    expect(t.profitLoss).toBeCloseTo(11370.36);
+    expect(t.entryTime).toBe("2013-01-03T21:00:00Z");
+  });
+
+  it("maps numeric direction 1 to short", () => {
+    const clone = JSON.parse(JSON.stringify(realFixture));
+    clone.totalPerformance.closedTrades[0].direction = 1;
+    const r = parseLeanResults(clone);
+    expect(r.trades[0].direction).toBe("short");
+  });
+
+  it("tags real results as live_engine", () => {
+    expect(result.dataSource).toBe("live_engine");
   });
 });
 

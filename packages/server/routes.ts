@@ -14,6 +14,7 @@ import { registerLeanRoutes } from "./routes/lean";
 import { registerGateRoutes } from "./routes/gates";
 import { initializeWebSocket } from "./ws";
 import { isLiveTradingEnabled } from "./lib/liveTrading";
+import { isLeanAvailable } from "./services/lean-runner";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   registerStrategyRoutes(app);
@@ -32,7 +33,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/system/status", (_req: Request, res: Response) => {
     res.json({
       liveTradingEnabled: isLiveTradingEnabled(),
-      backtestEngine: "simulated",
+      backtestEngine: isLeanAvailable() ? "lean" : "simulated",
     });
   });
 

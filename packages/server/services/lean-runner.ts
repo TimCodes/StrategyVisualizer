@@ -57,58 +57,69 @@ function stripNumeric(raw: unknown, fallback = 0): number {
 }
 
 export function parseLeanResults(raw: Record<string, unknown>): ParsedLeanResult {
-  // TODO(local): verify key path against a real LEAN results sample
+  // Key names verified against LEAN CLI 1.0.200 output (2026-06-11):
+  // top level is camelCase ("statistics"), stat keys are Title Case with
+  // spaces and percent/dollar-formatted string values.
   const stats = (raw["Statistics"] ?? raw["statistics"] ?? {}) as Record<string, unknown>;
 
-  // TODO(local): confirm field names for Net Profit vs Compounding Annual Return
   const totalReturn = stripNumeric(
     stats["Net Profit"] ?? stats["Compounding Annual Return"] ?? stats["Total Return"]
   );
-
-  // TODO(local): confirm exact key for Sharpe Ratio
   const sharpeRatio = stripNumeric(stats["Sharpe Ratio"] ?? stats["SharpeRatio"]);
-
-  // TODO(local): confirm key: "Drawdown" vs "Maximum Drawdown"
   const maxDrawdown = stripNumeric(stats["Drawdown"] ?? stats["Maximum Drawdown"]);
-
-  // TODO(local): confirm key: "Win Rate" vs "Win Percentage"
   const winRate = stripNumeric(stats["Win Rate"] ?? stats["Win Percentage"]);
-
-  // TODO(local): confirm key: "Total Orders" vs "Total Trades"
   const totalTrades = stripNumeric(stats["Total Orders"] ?? stats["Total Trades"]);
 
-  // Equity curve: Charts -> "Strategy Equity" -> Series -> "Equity" -> Values
-  // TODO(local): verify this chart nesting path against a real LEAN results sample
+  // Equity curve: charts -> "Strategy Equity" -> series -> "Equity" -> values
+  // Verified against LEAN CLI 1.0.200 output (2026-06-11): values are
+  // candlestick arrays [unixSeconds, open, high, low, close]; older engines
+  // emitted {x, y} objects. Support both.
   let equityCurve: Array<{ date: string; value: number }> = [];
   try {
     const charts = (raw["Charts"] ?? raw["charts"] ?? {}) as Record<string, unknown>;
     const stratEq = (charts["Strategy Equity"] ?? {}) as Record<string, unknown>;
     const series = (stratEq["Series"] ?? stratEq["series"] ?? {}) as Record<string, unknown>;
     const equitySeries = (series["Equity"] ?? series["equity"] ?? {}) as Record<string, unknown>;
-    const values = (equitySeries["Values"] ?? equitySeries["values"] ?? []) as Array<{ x: number; y: number }>;
-    equityCurve = values.map((v) => ({
-      date: new Date(v.x * 1000).toISOString(),
-      value: v.y,
-    }));
+    const values = (equitySeries["Values"] ?? equitySeries["values"] ?? []) as Array<unknown>;
+    equityCurve = values
+      .map((v) => {
+        if (Array.isArray(v) && v.length >= 2) {
+          // [time, open, high, low, close] or [time, value] — last element is the close
+          return { date: new Date(Number(v[0]) * 1000).toISOString(), value: Number(v[v.length - 1]) };
+        }
+        const obj = v as { x?: number; y?: number };
+        if (obj && typeof obj.x === "number" && typeof obj.y === "number") {
+          return { date: new Date(obj.x * 1000).toISOString(), value: obj.y };
+        }
+        return null;
+      })
+      .filter((p): p is { date: string; value: number } => p !== null && isFinite(p.value));
   } catch {
     equityCurve = [];
   }
 
-  // Trades: TotalPerformance -> ClosedTrades
-  // TODO(local): verify this path and field names against a real LEAN results sample
+  // Trades: totalPerformance -> closedTrades
+  // Verified against LEAN CLI 1.0.200 output (2026-06-11): keys are camelCase
+  // and `direction` is numeric (0 = long, 1 = short); some engine versions
+  // emit the string form instead. Support both.
   let trades: LeanTrade[] = [];
   try {
     const perf = (raw["TotalPerformance"] ?? raw["totalPerformance"] ?? {}) as Record<string, unknown>;
     const closed = (perf["ClosedTrades"] ?? perf["closedTrades"] ?? []) as Array<Record<string, unknown>>;
-    trades = closed.map((t) => ({
-      entryTime: String(t["EntryTime"] ?? t["entryTime"] ?? ""),
-      exitTime: String(t["ExitTime"] ?? t["exitTime"] ?? ""),
-      entryPrice: stripNumeric(t["EntryPrice"] ?? t["entryPrice"]),
-      exitPrice: stripNumeric(t["ExitPrice"] ?? t["exitPrice"]),
-      quantity: Math.abs(stripNumeric(t["Quantity"] ?? t["quantity"])),
-      direction: String(t["Direction"] ?? t["direction"] ?? "long").toLowerCase() === "short" ? "short" : "long",
-      profitLoss: stripNumeric(t["ProfitLoss"] ?? t["profitLoss"] ?? t["Profit"] ?? t["profit"]),
-    }));
+    trades = closed.map((t) => {
+      const rawDir = t["Direction"] ?? t["direction"];
+      const isShort =
+        rawDir === 1 || String(rawDir).toLowerCase() === "short" || String(rawDir) === "1";
+      return {
+        entryTime: String(t["EntryTime"] ?? t["entryTime"] ?? ""),
+        exitTime: String(t["ExitTime"] ?? t["exitTime"] ?? ""),
+        entryPrice: stripNumeric(t["EntryPrice"] ?? t["entryPrice"]),
+        exitPrice: stripNumeric(t["ExitPrice"] ?? t["exitPrice"]),
+        quantity: Math.abs(stripNumeric(t["Quantity"] ?? t["quantity"])),
+        direction: isShort ? ("short" as const) : ("long" as const),
+        profitLoss: stripNumeric(t["ProfitLoss"] ?? t["profitLoss"] ?? t["Profit"] ?? t["profit"]),
+      };
+    });
   } catch {
     trades = [];
   }
@@ -199,8 +210,11 @@ export async function runLeanBacktest({
     );
   }
 
-  // 3. Find the newest results JSON under project/backtests/<id>/
-  // TODO(local): verify directory structure matches your LEAN workspace layout
+  // 3. Find the newest results JSON under project/backtests/<timestamp>/
+  // Verified against LEAN CLI 1.0.200 (2026-06-11): the output directory is
+  // named with a run timestamp (e.g. 2026-06-11_16-30-48) and the main
+  // results file is "<algorithmId>.json" (a numeric id, e.g. 1822130418.json),
+  // alongside "<id>-summary.json" and "<id>-order-events.json" which we skip.
   const backtestDir = path.join(projectDir, "backtests");
   let resultsJson: Record<string, unknown>;
   try {
@@ -216,17 +230,23 @@ export async function runLeanBacktest({
     }
 
     const newestDir = dirs[0];
-    // TODO(local): confirm the results filename (may be "<id>.json" or "results.json")
-    const resultsPath = path.join(backtestDir, newestDir, `${newestDir}.json`);
-    const fallbackPath = path.join(backtestDir, newestDir, "results.json");
+    const runDir = path.join(backtestDir, newestDir);
+    const files = await fs.readdir(runDir);
 
-    let raw: string;
-    try {
-      raw = await fs.readFile(resultsPath, "utf8");
-    } catch {
-      raw = await fs.readFile(fallbackPath, "utf8");
+    // Primary: the numeric-id main results file. Fallbacks cover older CLI layouts.
+    const mainResults =
+      files.find((f) => /^\d+\.json$/.test(f)) ??
+      files.find((f) => f === `${newestDir}.json`) ??
+      files.find((f) => f === "results.json");
+
+    if (!mainResults) {
+      throw new LeanRunError(
+        `No results JSON found in ${runDir} (files: ${files.join(", ")})`,
+        stderr
+      );
     }
 
+    const raw = await fs.readFile(path.join(runDir, mainResults), "utf8");
     resultsJson = JSON.parse(raw) as Record<string, unknown>;
   } catch (err) {
     if (err instanceof LeanRunError) throw err;
