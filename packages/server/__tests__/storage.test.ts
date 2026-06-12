@@ -197,6 +197,56 @@ describe("strategy goals (lock semantics)", () => {
   });
 });
 
+describe("position sizing plan (lock semantics)", () => {
+  const planBody = {
+    model: "fixed_fractional" as const,
+    f: 0.15,
+    largestLoss: 450,
+    startingCapital: 12000,
+    constraints: { maxDrawdownPct: 25, maxRiskOfRuin: 0.1 },
+  };
+
+  async function makeStrategy(stage: "idea" | "live" = "idea") {
+    return storage.createStrategy({
+      name: "P", description: "d", type: "momentum", status: "inactive",
+      performance: 0, sharpeRatio: 0, maxDrawdown: 0, winRate: 0, totalTrades: 0,
+      stage, gateStatus: "in_progress", gateHistory: [],
+      refinementHistory: [], incubationObservations: [],
+    });
+  }
+
+  it("locks the plan once with a lockedAt timestamp", async () => {
+    const s = await makeStrategy();
+    const updated = await storage.setPositionSizingPlan(s.id, planBody);
+    expect(updated.positionSizingPlan?.f).toBe(0.15);
+    expect(updated.positionSizingPlan?.lockedAt).toBeInstanceOf(Date);
+  });
+
+  it("rejects locking twice", async () => {
+    const s = await makeStrategy();
+    await storage.setPositionSizingPlan(s.id, planBody);
+    await expect(storage.setPositionSizingPlan(s.id, planBody)).rejects.toThrow(
+      "Position sizing plan already locked"
+    );
+  });
+
+  it("rejects locking once live", async () => {
+    const s = await makeStrategy("live");
+    await expect(storage.setPositionSizingPlan(s.id, planBody)).rejects.toThrow(
+      "must be locked before going live"
+    );
+  });
+
+  it("generic update cannot mutate the plan", async () => {
+    const s = await makeStrategy();
+    await storage.setPositionSizingPlan(s.id, planBody);
+    const after = await storage.updateStrategy(s.id, {
+      positionSizingPlan: { ...planBody, f: 0.99, lockedAt: new Date() },
+    } as any);
+    expect(after.positionSizingPlan?.f).toBe(0.15);
+  });
+});
+
 describe("strategies (memory path regression)", () => {
   it("gate transitions advance one stage and append history", async () => {
     const created = await storage.createStrategy({

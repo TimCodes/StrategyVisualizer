@@ -191,6 +191,27 @@ export type StrategyGoals = z.infer<typeof strategyGoalsSchema>;
 export const setGoalsBodySchema = strategyGoalsSchema.omit({ lockedAt: true });
 export type SetGoalsBody = z.infer<typeof setGoalsBodySchema>;
 
+// Davey Ch 16/20: the sizing scheme is decided (and written down) before
+// going live — never improvised mid-drawdown. Locked once, pre-live.
+export const positionSizingPlanSchema = z.object({
+  model: z.literal("fixed_fractional"),
+  /** Fixed fraction f: contracts = floor(f · equity / largestLoss) */
+  f: z.number().gt(0).max(1),
+  /** Largest historical losing trade, absolute dollars */
+  largestLoss: z.number().positive(),
+  /** Account size to start trading with (from the capital solver) */
+  startingCapital: z.number().positive(),
+  constraints: z.object({
+    maxDrawdownPct: z.number().positive(),
+    maxRiskOfRuin: z.number().min(0).max(1),
+  }),
+  lockedAt: z.date(),
+});
+export type PositionSizingPlan = z.infer<typeof positionSizingPlanSchema>;
+
+export const setSizingPlanBodySchema = positionSizingPlanSchema.omit({ lockedAt: true });
+export type SetSizingPlanBody = z.infer<typeof setSizingPlanBodySchema>;
+
 export const strategySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -208,6 +229,7 @@ export const strategySchema = z.object({
   edge: z.string().optional(),
   edgeAssessment: z.enum(["strong", "weak", "none"]).optional(),
   goals: strategyGoalsSchema.optional(),
+  positionSizingPlan: positionSizingPlanSchema.optional(),
   refinementHistory: z.array(refinementLogEntrySchema).default([]),
   walkForwardConfig: walkForwardConfigSchema.optional(),
   incubationStartedAt: z.date().optional(),
@@ -378,6 +400,7 @@ export const strategiesTable = pgTable("strategies", {
   edge: text("edge"),
   edgeAssessment: text("edge_assessment"),
   goals: jsonb("goals"),
+  positionSizingPlan: jsonb("position_sizing_plan"),
   walkForwardConfig: jsonb("walk_forward_config"),
   incubationStartedAt: timestamp("incubation_started_at"),
   requiredDays: integer("required_days"),

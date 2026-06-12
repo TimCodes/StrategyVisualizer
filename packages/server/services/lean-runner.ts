@@ -169,22 +169,22 @@ export async function runLeanBacktest({
   const workspaceDir = process.env.LEAN_WORKSPACE_DIR ?? "./lean-workspace";
   const projectDir = path.join(workspaceDir, projectName);
 
-  // 1. Write strategy code (and parameters, if any) to the project dir
+  // 1. Write strategy code and parameters to the project dir. The
+  // config.json is ALWAYS rewritten — a previous run's parameters (e.g. a
+  // walk-forward window's wf_start/wf_end) must never leak into this run.
   await fs.mkdir(projectDir, { recursive: true });
   await fs.writeFile(path.join(projectDir, "main.py"), code, "utf8");
-  if (parameters && Object.keys(parameters).length > 0) {
-    const stringified: Record<string, string> = {};
-    for (const [k, v] of Object.entries(parameters)) stringified[k] = String(v);
-    await fs.writeFile(
-      path.join(projectDir, "config.json"),
-      JSON.stringify(
-        { "algorithm-language": "Python", parameters: stringified },
-        null,
-        2
-      ),
-      "utf8"
-    );
-  }
+  const stringified: Record<string, string> = {};
+  for (const [k, v] of Object.entries(parameters ?? {})) stringified[k] = String(v);
+  await fs.writeFile(
+    path.join(projectDir, "config.json"),
+    JSON.stringify(
+      { "algorithm-language": "Python", parameters: stringified },
+      null,
+      2
+    ),
+    "utf8"
+  );
 
   // 2. Spawn the backtest command
   const command = process.env.LEAN_COMMAND ?? "lean";

@@ -36,6 +36,8 @@ import {
   WalkForwardConfig,
   StrategyGoals,
   SetGoalsBody,
+  PositionSizingPlan,
+  SetSizingPlanBody,
   WalkForwardRun,
   InsertWalkForwardRun,
   walkForwardRunsTable,
@@ -55,6 +57,7 @@ export interface IStorage {
   recordGate(id: string, params: { result: "passed" | "failed" | "discarded"; note?: string }): Promise<Strategy>;
   appendRefinementLog(id: string, entry: { refinementType: "logic_fix" | "optimization"; rationale: string }): Promise<void>;
   setStrategyGoals(id: string, goals: SetGoalsBody): Promise<Strategy>;
+  setPositionSizingPlan(id: string, plan: SetSizingPlanBody): Promise<Strategy>;
 
   getTrades(): Promise<Trade[]>;
   getTradesByStrategy(strategyId: string): Promise<Trade[]>;
@@ -474,10 +477,50 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
+  async setPositionSizingPlan(id: string, plan: SetSizingPlanBody): Promise<Strategy> {
+    // Davey Ch 16/20: the sizing plan is written before going live and
+    // never improvised afterwards. One shot, any stage before live.
+    const applyPlan = (s: Strategy): Strategy => {
+      if (s.positionSizingPlan) throw new Error("Position sizing plan already locked");
+      if (s.stage === "live") throw new Error("Position sizing plan must be locked before going live");
+      const locked: PositionSizingPlan = { ...plan, lockedAt: new Date() };
+      return { ...s, positionSizingPlan: locked };
+    };
+    try {
+      const db = await getDb();
+      if (db) {
+        const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+        if (!existing) throw new Error("Strategy not found");
+        const updated = applyPlan(this.mapDbStrategy(existing));
+        const [row] = await db
+          .update(strategiesTable)
+          .set(this.strategyToDbValues(updated))
+          .where(eq(strategiesTable.id, id))
+          .returning();
+        return row ? this.mapDbStrategy(row) : updated;
+      }
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (
+        msg === "Strategy not found" ||
+        msg === "Position sizing plan already locked" ||
+        msg === "Position sizing plan must be locked before going live"
+      ) {
+        throw err;
+      }
+      // DB connection error — fall through to Map
+    }
+    const existing = this.strategies.get(id);
+    if (!existing) throw new Error("Strategy not found");
+    const updated = applyPlan(existing);
+    this.strategies.set(id, updated);
+    return updated;
+  }
+
   async updateStrategy(id: string, data: Partial<InsertStrategy>): Promise<Strategy> {
     // Gate transition fields are managed exclusively by recordGate;
-    // goals are locked via setStrategyGoals only
-    const { stage: _s, gateStatus: _gs, gateHistory: _gh, goals: _g, ...safeData } = data as any;
+    // goals and the sizing plan are locked via their dedicated setters only
+    const { stage: _s, gateStatus: _gs, gateHistory: _gh, goals: _g, positionSizingPlan: _p, ...safeData } = data as any;
     try {
       const db = await getDb();
       if (db) {
@@ -1549,6 +1592,14 @@ export class MemStorage implements IStorage {
               : s.goals.lockedAt,
           } as any)
         : null,
+      positionSizingPlan: s.positionSizingPlan
+        ? ({
+            ...s.positionSizingPlan,
+            lockedAt: s.positionSizingPlan.lockedAt instanceof Date
+              ? s.positionSizingPlan.lockedAt.toISOString()
+              : s.positionSizingPlan.lockedAt,
+          } as any)
+        : null,
       walkForwardConfig: s.walkForwardConfig
         ? ({
             ...s.walkForwardConfig,
@@ -1595,6 +1646,12 @@ export class MemStorage implements IStorage {
             ...(row.goals as any),
             lockedAt: new Date((row.goals as any).lockedAt),
           } as StrategyGoals)
+        : undefined,
+      positionSizingPlan: row.positionSizingPlan
+        ? ({
+            ...(row.positionSizingPlan as any),
+            lockedAt: new Date((row.positionSizingPlan as any).lockedAt),
+          } as PositionSizingPlan)
         : undefined,
       walkForwardConfig: row.walkForwardConfig
         ? ({

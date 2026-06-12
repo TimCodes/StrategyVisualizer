@@ -1,12 +1,13 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
-import { computeMonteCarlo, computeDeflatedSharpe, assertEvaluable, persistGateResult, computeIncubationVerdict, computeFeasibility } from "../services/gates";
+import { computeMonteCarlo, computeMonteCarloFromTrades, computeDeflatedSharpe, assertEvaluable, persistGateResult, computeIncubationVerdict, computeFeasibility } from "../services/gates";
+import { sweepFixedFraction, solveStartingCapital, largestLosingTrade } from "../services/position-sizing";
 import { walkForwardCannotEvaluate, pboCannotEvaluate } from "../services/pbo";
 import { executeWalkForward } from "../services/walk-forward-runner";
 import { isLeanAvailable } from "../services/lean-runner";
 import { emitToSocket, getIO } from "../ws";
-import { incubationObservationSchema, walkForwardConfigSchema } from "@shared/schema";
+import { incubationObservationSchema, walkForwardConfigSchema, setSizingPlanBodySchema } from "@shared/schema";
 
 // ─── request body schemas ───────────────────────────────────
 
@@ -46,6 +47,21 @@ const monteCarloBodySchema = z.object({
   passRetDDRatio: z.number().positive().optional(),
   passRiskOfRuin: z.number().min(0).max(1).optional(),
   useGlobalTrials: z.boolean().optional(),
+  // trade-level engine inputs (Davey Ch 19)
+  startingEquity: z.number().positive().optional(),
+  quittingEquity: z.number().positive().optional(),
+  tradesPerYear: z.number().int().positive().optional(),
+});
+
+const sizingSweepBodySchema = z.object({
+  backtest: backtestInputSchema.optional(),
+  backtestId: z.string().optional(),
+  startingEquity: z.number().positive().default(100000),
+  quittingEquity: z.number().positive().optional(),
+  tradesPerYear: z.number().int().positive().optional(),
+  iterations: z.number().int().min(100).max(5000).optional(),
+  maxDrawdownPct: z.number().positive().optional(),
+  maxRiskOfRuin: z.number().min(0).max(1).optional(),
 });
 
 const incubationStartBodySchema = z.object({
@@ -119,6 +135,97 @@ export function registerGateRoutes(app: Express) {
     }
   });
 
+  // POST /api/strategies/:id/sizing/sweep — Davey Fig 16.1: simulate the
+  // fixed fraction f across its range, recommend the best f that satisfies
+  // the drawdown and risk-of-ruin constraints, and solve the minimum
+  // starting capital. Live-engine trades only — sizing decisions derived
+  // from simulated data would be fiction.
+  app.post("/api/strategies/:id/sizing/sweep", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const strategy = await storage.getStrategyById(id);
+      if (!strategy) return res.status(404).json({ error: "Strategy not found" });
+
+      const parsed = sizingSweepBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+      const body = parsed.data;
+
+      let bt: any;
+      if (body.backtestId) {
+        const backtests = await storage.getLeanBacktestsByProject(body.backtestId);
+        const found = backtests[0];
+        if (!found) return res.status(404).json({ error: "Backtest not found" });
+        bt = found;
+      } else if (body.backtest) {
+        bt = { ...body.backtest, dataSource: body.backtest.dataSource ?? "simulated" };
+      } else {
+        return res.status(400).json({ error: "Provide either backtest or backtestId" });
+      }
+
+      const evaluable = assertEvaluable(bt);
+      if (!evaluable.ok) {
+        return res.status(400).json({ error: evaluable.reason });
+      }
+      const trades: number[] = (bt.trades ?? []).map((t: any) => t.profitLoss);
+      if (trades.length < 10) {
+        return res.status(400).json({
+          error: `Only ${trades.length} closed trades; at least 10 are needed for sizing simulation.`,
+        });
+      }
+
+      const constraints = {
+        maxDrawdownPct: body.maxDrawdownPct ?? strategy.goals?.maxDrawdownPct ?? 25,
+        maxRiskOfRuin: body.maxRiskOfRuin ?? strategy.goals?.maxRiskOfRuin ?? 0.1,
+      };
+      const largestLoss = largestLosingTrade(trades);
+      if (largestLoss <= 0) {
+        return res.status(400).json({
+          error: "No losing trades in the sample — fixed-fractional sizing needs a largest loss. Treat the backtest as too good to be true.",
+        });
+      }
+
+      const sweep = sweepFixedFraction({
+        trades,
+        largestLoss,
+        startingEquity: body.startingEquity,
+        quittingEquity: body.quittingEquity,
+        tradesPerYear: body.tradesPerYear,
+        iterations: body.iterations ?? 1000,
+        constraints,
+      });
+
+      const capital = solveStartingCapital({
+        trades,
+        quittingEquity: body.quittingEquity ?? body.startingEquity * 0.5,
+        maxRiskOfRuin: constraints.maxRiskOfRuin,
+        tradesPerYear: body.tradesPerYear,
+        iterations: body.iterations ?? 1000,
+      });
+
+      res.json({ largestLoss, sweep, capital, constraints });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/strategies/:id/sizing/plan — lock the sizing plan (once,
+  // before going live). The generic PATCH strips positionSizingPlan.
+  app.post("/api/strategies/:id/sizing/plan", async (req: Request, res: Response) => {
+    try {
+      const parsed = setSizingPlanBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+      const strategy = await storage.setPositionSizingPlan(req.params.id, parsed.data);
+      res.json(strategy);
+    } catch (err: any) {
+      const msg = err.message;
+      if (msg === "Strategy not found") return res.status(404).json({ error: msg });
+      if (msg === "Position sizing plan already locked" || msg === "Position sizing plan must be locked before going live") {
+        return res.status(409).json({ error: msg });
+      }
+      res.status(500).json({ error: msg });
+    }
+  });
+
   // POST /api/strategies/:id/gates/monte-carlo
   app.post("/api/strategies/:id/gates/monte-carlo", async (req: Request, res: Response) => {
     try {
@@ -154,13 +261,25 @@ export function registerGateRoutes(app: Express) {
       }
 
       // Monte Carlo — locked goals supply the default pass thresholds
-      // (explicit body values still win, e.g. for exploratory runs)
-      const mcResult = computeMonteCarlo(bt, {
-        iterations: body.iterations,
-        ruinThreshold: body.ruinThreshold,
-        passRetDDRatio: body.passRetDDRatio ?? strategy.goals?.minRetDDRatio,
-        passRiskOfRuin: body.passRiskOfRuin ?? strategy.goals?.maxRiskOfRuin,
-      });
+      // (explicit body values still win, e.g. for exploratory runs).
+      // Trade-level resampling (Davey's actual procedure) is preferred
+      // whenever the backtest carries enough closed trades.
+      const hasTrades = Array.isArray(bt.trades) && bt.trades.length >= 10;
+      const mcResult = hasTrades
+        ? computeMonteCarloFromTrades(bt, {
+            iterations: body.iterations,
+            startingEquity: body.startingEquity,
+            quittingEquity: body.quittingEquity,
+            tradesPerYear: body.tradesPerYear,
+            passRetDDRatio: body.passRetDDRatio ?? strategy.goals?.minRetDDRatio,
+            passRiskOfRuin: body.passRiskOfRuin ?? strategy.goals?.maxRiskOfRuin,
+          })
+        : computeMonteCarlo(bt, {
+            iterations: body.iterations,
+            ruinThreshold: body.ruinThreshold,
+            passRetDDRatio: body.passRetDDRatio ?? strategy.goals?.minRetDDRatio,
+            passRiskOfRuin: body.passRiskOfRuin ?? strategy.goals?.maxRiskOfRuin,
+          });
 
       // DSR (computed separately, verdict is informational)
       let dsrResult;

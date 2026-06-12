@@ -1,5 +1,6 @@
 import { storage } from "../storage";
 import type { LeanBacktest, GateResult } from "@shared/schema";
+import { simulateTrades } from "./position-sizing";
 
 // ─────────────────────────────────────────────────────────────
 //  Normal distribution helpers
@@ -458,6 +459,96 @@ export function computeIncubationVerdict(
     verdict: "pass",
     reason: `Forward return ${(avgReturn * 100).toFixed(2)}% with avg drawdown ${(avgDrawdown * 100).toFixed(1)}% ` +
       `within ${DD_BLOWOUT_FACTOR}× tolerance. Verdict rests on ${provenance}.`,
+    metrics,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+//  A1b — Trade-level Monte Carlo (Davey Ch 14/19)
+//
+//  Resamples individual trade P&L instead of equity-curve returns —
+//  Davey's actual procedure. Preferred over computeMonteCarlo
+//  whenever the backtest carries closed trades.
+// ─────────────────────────────────────────────────────────────
+
+export interface TradeMonteCarloConfig {
+  iterations?: number;
+  startingEquity?: number;   // default 100000
+  quittingEquity?: number;   // default 50% of starting
+  tradesPerYear?: number;    // default: observed trade count
+  passRetDDRatio?: number;   // default 2.0 (Davey)
+  passRiskOfRuin?: number;   // default 0.05
+}
+
+export interface TradeMonteCarloResult {
+  verdict: "pass" | "fail" | "cannot_evaluate";
+  reason: string | null;
+  metrics: Record<string, unknown> | null;
+}
+
+export function computeMonteCarloFromTrades(
+  backtest: { dataSource?: string; trades?: Array<{ profitLoss: number }> },
+  config: TradeMonteCarloConfig = {}
+): TradeMonteCarloResult {
+  const evaluable = assertEvaluable(backtest);
+  if (!evaluable.ok) {
+    return { verdict: "cannot_evaluate", reason: evaluable.reason, metrics: null };
+  }
+  const trades = (backtest.trades ?? []).map((t) => t.profitLoss);
+  if (trades.length < 10) {
+    return {
+      verdict: "cannot_evaluate",
+      reason: `Only ${trades.length} closed trades; at least 10 are needed for trade-level resampling.`,
+      metrics: null,
+    };
+  }
+
+  const startingEquity = config.startingEquity ?? 100000;
+  const passRetDDRatio = config.passRetDDRatio ?? 2.0;
+  const passRiskOfRuin = config.passRiskOfRuin ?? 0.05;
+
+  const sim = simulateTrades({
+    trades,
+    startingEquity,
+    quittingEquity: config.quittingEquity,
+    tradesPerYear: config.tradesPerYear,
+    iterations: config.iterations ?? 2500,
+    collectBands: true,
+  });
+
+  const metrics = {
+    engine: "trade_level",
+    iterations: sim.iterations,
+    tradesPerYear: sim.tradesPerYear,
+    startingEquity: sim.startingEquity,
+    quittingEquity: sim.quittingEquity,
+    medianReturn: sim.medianReturn,
+    medianMaxDD: sim.medianMaxDD,
+    medianRetDDRatio: sim.retDDRatio,
+    riskOfRuin: sim.riskOfRuin,
+    probProfit: sim.probProfit,
+    percentiles: sim.percentiles,
+    bands: sim.bands,
+    passThresholds: { retDDRatio: passRetDDRatio, riskOfRuin: passRiskOfRuin },
+  };
+
+  const failures: string[] = [];
+  if (sim.retDDRatio < passRetDDRatio) {
+    failures.push(`median return/DD ${sim.retDDRatio.toFixed(2)} < ${passRetDDRatio}`);
+  }
+  if (sim.riskOfRuin > passRiskOfRuin) {
+    failures.push(`risk of ruin ${(sim.riskOfRuin * 100).toFixed(1)}% > ${(passRiskOfRuin * 100).toFixed(0)}%`);
+  }
+
+  if (failures.length > 0) {
+    return { verdict: "fail", reason: `Trade-level Monte Carlo failed: ${failures.join("; ")}.`, metrics };
+  }
+  return {
+    verdict: "pass",
+    reason:
+      `Trade-level Monte Carlo passed: median return ${(sim.medianReturn * 100).toFixed(1)}%, ` +
+      `ret/DD ${sim.retDDRatio.toFixed(2)}, risk of ruin ${(sim.riskOfRuin * 100).toFixed(1)}%, ` +
+      `probability of profit ${(sim.probProfit * 100).toFixed(0)}%.`,
     metrics,
   };
 }

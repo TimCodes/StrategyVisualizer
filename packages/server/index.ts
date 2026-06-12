@@ -3,7 +3,9 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
-app.use(express.json());
+// Backtest payloads (equity curves + trade lists) routinely exceed the
+// 100kb default
+app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: false }));
 
 app.use((req, res, next) => {
