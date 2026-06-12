@@ -146,6 +146,57 @@ describe("portfolio metrics", () => {
   });
 });
 
+describe("strategy goals (lock semantics)", () => {
+  const goalsBody = {
+    minRetDDRatio: 2,
+    maxDrawdownPct: 25,
+    maxRiskOfRuin: 0.1,
+    minAnnualReturnPct: 10,
+    minTradesPerYear: 20,
+  };
+
+  async function makeIdeaStrategy() {
+    return storage.createStrategy({
+      name: "G", description: "d", type: "momentum", status: "inactive",
+      performance: 0, sharpeRatio: 0, maxDrawdown: 0, winRate: 0, totalTrades: 0,
+      stage: "idea", gateStatus: "in_progress", gateHistory: [],
+      refinementHistory: [], incubationObservations: [],
+    });
+  }
+
+  it("locks goals once at the idea stage with a lockedAt timestamp", async () => {
+    const s = await makeIdeaStrategy();
+    const updated = await storage.setStrategyGoals(s.id, goalsBody);
+    expect(updated.goals?.minRetDDRatio).toBe(2);
+    expect(updated.goals?.lockedAt).toBeInstanceOf(Date);
+  });
+
+  it("rejects setting goals twice", async () => {
+    const s = await makeIdeaStrategy();
+    await storage.setStrategyGoals(s.id, goalsBody);
+    await expect(storage.setStrategyGoals(s.id, goalsBody)).rejects.toThrow(
+      "Goals already locked"
+    );
+  });
+
+  it("rejects setting goals after the idea stage", async () => {
+    const s = await makeIdeaStrategy();
+    await storage.recordGate(s.id, { result: "passed" }); // idea → feasibility
+    await expect(storage.setStrategyGoals(s.id, goalsBody)).rejects.toThrow(
+      "Goals can only be set at the idea stage"
+    );
+  });
+
+  it("generic update cannot mutate goals", async () => {
+    const s = await makeIdeaStrategy();
+    await storage.setStrategyGoals(s.id, goalsBody);
+    const after = await storage.updateStrategy(s.id, {
+      goals: { ...goalsBody, minRetDDRatio: 99, lockedAt: new Date() },
+    } as any);
+    expect(after.goals?.minRetDDRatio).toBe(2);
+  });
+});
+
 describe("strategies (memory path regression)", () => {
   it("gate transitions advance one stage and append history", async () => {
     const created = await storage.createStrategy({

@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
-import { insertStrategySchema } from "@shared/schema";
+import { insertStrategySchema, setGoalsBodySchema } from "@shared/schema";
 
 const gateBodySchema = z.object({
   result: z.enum(["passed", "failed", "discarded"]),
@@ -68,6 +68,28 @@ export function registerStrategyRoutes(app: Express) {
         return res.status(404).json({ error: "Strategy not found" });
       }
       res.status(500).json({ error: "Failed to delete strategy" });
+    }
+  });
+
+  // Lock goals — once, at the idea stage only (Davey Ch 9). The generic
+  // PATCH strips `goals`, so this is the only mutation path.
+  app.post("/api/strategies/:id/goals", async (req: Request, res: Response) => {
+    try {
+      const parsed = setGoalsBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request body", details: parsed.error.errors });
+      }
+      const strategy = await storage.setStrategyGoals(req.params.id, parsed.data);
+      res.json(strategy);
+    } catch (error) {
+      const msg = (error as Error).message;
+      if (msg === "Strategy not found") {
+        return res.status(404).json({ error: msg });
+      }
+      if (msg === "Goals already locked" || msg === "Goals can only be set at the idea stage") {
+        return res.status(409).json({ error: msg });
+      }
+      res.status(500).json({ error: "Failed to set goals" });
     }
   });
 

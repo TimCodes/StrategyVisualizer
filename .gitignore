@@ -6,4 +6,5 @@ vite.config.ts.*
 *.tar.gz
 .env*
 !.env.example
-lean-workspace/.claude/
+lean-workspace/
+.claude/

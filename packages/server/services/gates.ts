@@ -463,6 +463,184 @@ export function computeIncubationVerdict(
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Feasibility gate (Davey Ch 6–7, 12: preliminary analysis)
+//
+//  Declared goals are compared against a single full historical
+//  backtest. Fails fast so no further effort is spent on a
+//  strategy that can never meet its objectives. Suspiciously good
+//  results do NOT auto-pass — they demand manual review.
+// ─────────────────────────────────────────────────────────────
+
+export interface FeasibilityConfig {
+  /** Minimum closed trades for statistical significance (default 30) */
+  minSampleTrades?: number;
+  /** Slippage + commission margin the average trade must clear, USD (default 25) */
+  costPerTradeUsd?: number;
+  /** Sharpe above this is "too good to be true" → manual review (default 4) */
+  tooGoodSharpe?: number;
+  /** Win rate (percent) above this → manual review (default 90) */
+  tooGoodWinRatePct?: number;
+}
+
+export interface FeasibilityMetrics {
+  years: number;
+  annualizedReturnPct: number;
+  maxDrawdownPct: number;
+  retDDRatio: number;
+  tradesPerYear: number;
+  totalTrades: number;
+  avgTradeUsd: number | null;
+  sharpeRatio: number;
+  winRatePct: number;
+  tooGoodToBeTrue: boolean;
+}
+
+export interface FeasibilityResult {
+  verdict: "pass" | "fail" | "cannot_evaluate";
+  reason: string;
+  metrics: FeasibilityMetrics | null;
+}
+
+export function computeFeasibility(
+  backtest: {
+    dataSource?: string;
+    totalReturn: number;
+    sharpeRatio: number;
+    maxDrawdown: number;
+    winRate?: number;
+    totalTrades?: number;
+    equityCurve: Array<{ date: string; value: number }>;
+    trades?: Array<{ profitLoss: number }>;
+  },
+  goals: {
+    minRetDDRatio: number;
+    maxDrawdownPct: number;
+    minAnnualReturnPct: number;
+    minTradesPerYear: number;
+  },
+  config: FeasibilityConfig = {}
+): FeasibilityResult {
+  const evaluable = assertEvaluable(backtest);
+  if (!evaluable.ok) {
+    return { verdict: "cannot_evaluate", reason: evaluable.reason, metrics: null };
+  }
+
+  const minSampleTrades = config.minSampleTrades ?? 30;
+  const costPerTradeUsd = config.costPerTradeUsd ?? 25;
+  const tooGoodSharpe = config.tooGoodSharpe ?? 4;
+  const tooGoodWinRatePct = config.tooGoodWinRatePct ?? 90;
+
+  if (backtest.equityCurve.length < 2) {
+    return {
+      verdict: "cannot_evaluate",
+      reason: "Equity curve too short to derive the test period.",
+      metrics: null,
+    };
+  }
+
+  const first = new Date(backtest.equityCurve[0].date).getTime();
+  const last = new Date(backtest.equityCurve[backtest.equityCurve.length - 1].date).getTime();
+  const years = (last - first) / (365.25 * 24 * 3600 * 1000);
+  if (!isFinite(years) || years <= 0) {
+    return {
+      verdict: "cannot_evaluate",
+      reason: "Could not derive a positive test period from the equity curve dates.",
+      metrics: null,
+    };
+  }
+
+  const totalTrades = backtest.totalTrades ?? 0;
+  const annualizedReturnPct =
+    (Math.pow(1 + backtest.totalReturn / 100, 1 / years) - 1) * 100;
+  const maxDrawdownPct = Math.abs(backtest.maxDrawdown);
+  const retDDRatio = maxDrawdownPct > 0 ? annualizedReturnPct / maxDrawdownPct : Infinity;
+  const tradesPerYear = totalTrades / years;
+  const closedTrades = backtest.trades ?? [];
+  const avgTradeUsd =
+    closedTrades.length > 0
+      ? closedTrades.reduce((s, t) => s + t.profitLoss, 0) / closedTrades.length
+      : null;
+  const winRatePct = backtest.winRate ?? 0;
+  const tooGoodToBeTrue =
+    backtest.sharpeRatio > tooGoodSharpe || winRatePct > tooGoodWinRatePct;
+
+  const metrics: FeasibilityMetrics = {
+    years,
+    annualizedReturnPct,
+    maxDrawdownPct,
+    retDDRatio,
+    tradesPerYear,
+    totalTrades,
+    avgTradeUsd,
+    sharpeRatio: backtest.sharpeRatio,
+    winRatePct,
+    tooGoodToBeTrue,
+  };
+
+  // Sample size is not evidence of failure — it is absence of evidence.
+  if (totalTrades < minSampleTrades) {
+    return {
+      verdict: "cannot_evaluate",
+      reason: `Only ${totalTrades} trades in the test period; ${minSampleTrades}+ needed for statistical significance. Extend the test period or data.`,
+      metrics,
+    };
+  }
+
+  const failures: string[] = [];
+  if (annualizedReturnPct < goals.minAnnualReturnPct) {
+    failures.push(
+      `annualized return ${annualizedReturnPct.toFixed(1)}% < goal ${goals.minAnnualReturnPct}%`
+    );
+  }
+  if (maxDrawdownPct > goals.maxDrawdownPct) {
+    failures.push(`max drawdown ${maxDrawdownPct.toFixed(1)}% > goal ${goals.maxDrawdownPct}%`);
+  }
+  if (retDDRatio < goals.minRetDDRatio) {
+    failures.push(`return/DD ratio ${retDDRatio.toFixed(2)} < goal ${goals.minRetDDRatio}`);
+  }
+  if (tradesPerYear < goals.minTradesPerYear) {
+    failures.push(
+      `${tradesPerYear.toFixed(1)} trades/year < goal ${goals.minTradesPerYear}`
+    );
+  }
+  if (avgTradeUsd !== null && avgTradeUsd <= costPerTradeUsd) {
+    failures.push(
+      `average trade $${avgTradeUsd.toFixed(2)} does not clear the $${costPerTradeUsd} slippage/commission buffer`
+    );
+  }
+
+  if (failures.length > 0) {
+    return {
+      verdict: "fail",
+      reason: `Does not meet locked goals: ${failures.join("; ")}.`,
+      metrics,
+    };
+  }
+
+  // Passing metrics that look impossible are a development-error signal,
+  // not a green light (Davey: "performance that is too good is a bad thing").
+  if (tooGoodToBeTrue) {
+    return {
+      verdict: "cannot_evaluate",
+      reason:
+        `Metrics exceed plausibility thresholds (Sharpe ${backtest.sharpeRatio.toFixed(2)} > ${tooGoodSharpe} ` +
+        `or win rate ${winRatePct.toFixed(1)}% > ${tooGoodWinRatePct}%). ` +
+        `Manual review required: check for look-ahead bias, fill assumptions, or data errors before proceeding.`,
+      metrics,
+    };
+  }
+
+  return {
+    verdict: "pass",
+    reason:
+      `Meets all locked goals: annualized ${annualizedReturnPct.toFixed(1)}%, ` +
+      `DD ${maxDrawdownPct.toFixed(1)}%, ret/DD ${retDDRatio.toFixed(2)}, ` +
+      `${tradesPerYear.toFixed(0)} trades/yr over ${years.toFixed(1)} years.`,
+    metrics,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
 //  B1 — Walk-Forward (scaffold — cannot_evaluate today)
 // ─────────────────────────────────────────────────────────────
 

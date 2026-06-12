@@ -34,6 +34,8 @@ import {
   gateResultsTable,
   IncubationObservation,
   WalkForwardConfig,
+  StrategyGoals,
+  SetGoalsBody,
   strategiesTable,
   tradesTable,
   backtestResultsTable,
@@ -49,6 +51,7 @@ export interface IStorage {
   deleteStrategy(id: string): Promise<void>;
   recordGate(id: string, params: { result: "passed" | "failed" | "discarded"; note?: string }): Promise<Strategy>;
   appendRefinementLog(id: string, entry: { refinementType: "logic_fix" | "optimization"; rationale: string }): Promise<void>;
+  setStrategyGoals(id: string, goals: SetGoalsBody): Promise<Strategy>;
 
   getTrades(): Promise<Trade[]>;
   getTradesByStrategy(strategyId: string): Promise<Trade[]>;
@@ -426,9 +429,46 @@ export class MemStorage implements IStorage {
     this.strategies.set(id, updated);
   }
 
+  async setStrategyGoals(id: string, goals: SetGoalsBody): Promise<Strategy> {
+    // Davey Ch 9: goals are locked once, at the idea stage, before any
+    // testing. Changing them after seeing results is optimization.
+    const applyGoals = (s: Strategy): Strategy => {
+      if (s.goals) throw new Error("Goals already locked");
+      if (s.stage !== "idea") throw new Error("Goals can only be set at the idea stage");
+      const locked: StrategyGoals = { ...goals, lockedAt: new Date() };
+      return { ...s, goals: locked };
+    };
+    try {
+      const db = await getDb();
+      if (db) {
+        const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+        if (!existing) throw new Error("Strategy not found");
+        const updated = applyGoals(this.mapDbStrategy(existing));
+        const [row] = await db
+          .update(strategiesTable)
+          .set(this.strategyToDbValues(updated))
+          .where(eq(strategiesTable.id, id))
+          .returning();
+        return row ? this.mapDbStrategy(row) : updated;
+      }
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg === "Strategy not found" || msg === "Goals already locked" || msg === "Goals can only be set at the idea stage") {
+        throw err;
+      }
+      // DB connection error — fall through to Map
+    }
+    const existing = this.strategies.get(id);
+    if (!existing) throw new Error("Strategy not found");
+    const updated = applyGoals(existing);
+    this.strategies.set(id, updated);
+    return updated;
+  }
+
   async updateStrategy(id: string, data: Partial<InsertStrategy>): Promise<Strategy> {
-    // Gate transition fields are managed exclusively by recordGate
-    const { stage: _s, gateStatus: _gs, gateHistory: _gh, ...safeData } = data as any;
+    // Gate transition fields are managed exclusively by recordGate;
+    // goals are locked via setStrategyGoals only
+    const { stage: _s, gateStatus: _gs, gateHistory: _gh, goals: _g, ...safeData } = data as any;
     try {
       const db = await getDb();
       if (db) {
@@ -1369,6 +1409,14 @@ export class MemStorage implements IStorage {
       incubationObservations: (s.incubationObservations ?? []) as any,
       edge: s.edge ?? null,
       edgeAssessment: s.edgeAssessment ?? null,
+      goals: s.goals
+        ? ({
+            ...s.goals,
+            lockedAt: s.goals.lockedAt instanceof Date
+              ? s.goals.lockedAt.toISOString()
+              : s.goals.lockedAt,
+          } as any)
+        : null,
       walkForwardConfig: s.walkForwardConfig
         ? ({
             inSampleDays: s.walkForwardConfig.inSampleDays,
@@ -1413,6 +1461,12 @@ export class MemStorage implements IStorage {
       incubationObservations: ((row.incubationObservations as any[]) ?? []) as IncubationObservation[],
       edge: row.edge ?? undefined,
       edgeAssessment: (row.edgeAssessment as Strategy["edgeAssessment"]) ?? undefined,
+      goals: row.goals
+        ? ({
+            ...(row.goals as any),
+            lockedAt: new Date((row.goals as any).lockedAt),
+          } as StrategyGoals)
+        : undefined,
       walkForwardConfig: row.walkForwardConfig
         ? ({
             inSampleDays: (row.walkForwardConfig as any).inSampleDays,

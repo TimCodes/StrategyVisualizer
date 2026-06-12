@@ -83,6 +83,27 @@ export const refinementLogEntrySchema = z.object({
 });
 export type RefinementLogEntry = z.infer<typeof refinementLogEntrySchema>;
 
+// Davey Ch 9: goals are declared BEFORE testing and locked — changing them
+// after seeing results is optimization. All gates compare against these.
+export const strategyGoalsSchema = z.object({
+  /** Minimum acceptable annual return / max drawdown ratio (Davey: 2.0) */
+  minRetDDRatio: z.number().positive(),
+  /** Maximum acceptable drawdown, percent (e.g. 25 = 25%) */
+  maxDrawdownPct: z.number().positive(),
+  /** Maximum acceptable risk of ruin, fraction 0–1 (Davey: 0.10) */
+  maxRiskOfRuin: z.number().min(0).max(1),
+  /** Minimum acceptable annualized return, percent */
+  minAnnualReturnPct: z.number(),
+  /** Minimum trades per year for the strategy to be worth running */
+  minTradesPerYear: z.number().int().positive(),
+  /** Set server-side when goals are locked; immutable afterwards */
+  lockedAt: z.date(),
+});
+export type StrategyGoals = z.infer<typeof strategyGoalsSchema>;
+
+export const setGoalsBodySchema = strategyGoalsSchema.omit({ lockedAt: true });
+export type SetGoalsBody = z.infer<typeof setGoalsBodySchema>;
+
 export const strategySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -99,6 +120,7 @@ export const strategySchema = z.object({
   gateHistory: z.array(gateHistoryEntrySchema).default([]),
   edge: z.string().optional(),
   edgeAssessment: z.enum(["strong", "weak", "none"]).optional(),
+  goals: strategyGoalsSchema.optional(),
   refinementHistory: z.array(refinementLogEntrySchema).default([]),
   walkForwardConfig: walkForwardConfigSchema.optional(),
   incubationStartedAt: z.date().optional(),
@@ -268,6 +290,7 @@ export const strategiesTable = pgTable("strategies", {
   incubationObservations: jsonb("incubation_observations").notNull().default([]),
   edge: text("edge"),
   edgeAssessment: text("edge_assessment"),
+  goals: jsonb("goals"),
   walkForwardConfig: jsonb("walk_forward_config"),
   incubationStartedAt: timestamp("incubation_started_at"),
   requiredDays: integer("required_days"),

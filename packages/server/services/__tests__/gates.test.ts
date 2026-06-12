@@ -7,6 +7,7 @@ import {
   SIMULATED_REASON,
   computeIncubationVerdict,
   DD_BLOWOUT_FACTOR,
+  computeFeasibility,
 } from "../gates";
 import { computePBO, computeWFE } from "../pbo";
 import type { LeanBacktest } from "@shared/schema";
@@ -375,5 +376,113 @@ describe("computeWFE", () => {
   it("WFE close to 1.0 is good; < 0.5 is poor", () => {
     expect(computeWFE(1.0, 0.9)).toBeGreaterThan(0.8); // good
     expect(computeWFE(1.0, 0.3)).toBeLessThan(0.5);   // poor
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+//  Feasibility gate (Davey Ch 12 preliminary analysis)
+// ─────────────────────────────────────────────────────────────
+
+describe("computeFeasibility", () => {
+  const goals = {
+    minRetDDRatio: 2.0,
+    maxDrawdownPct: 25,
+    minAnnualReturnPct: 10,
+    minTradesPerYear: 20,
+  };
+
+  // One year of equity data, +29.3% with a 5.5% drawdown (the real Demo run)
+  function yearCurve(): { date: string; value: number }[] {
+    const pts: { date: string; value: number }[] = [];
+    for (let i = 0; i <= 12; i++) {
+      const d = new Date(Date.UTC(2013, i, 1));
+      pts.push({ date: d.toISOString(), value: 100000 * (1 + (0.293 * i) / 12) });
+    }
+    return pts;
+  }
+
+  function feasibleBacktest(overrides: Record<string, unknown> = {}) {
+    return {
+      dataSource: "live_engine",
+      totalReturn: 29.3,
+      sharpeRatio: 2.1,
+      maxDrawdown: 5.5,
+      winRate: 65,
+      totalTrades: 40,
+      equityCurve: yearCurve(),
+      trades: Array.from({ length: 40 }, () => ({ profitLoss: 120 })),
+      ...overrides,
+    };
+  }
+
+  it("returns cannot_evaluate for simulated data before any computation", () => {
+    const r = computeFeasibility(feasibleBacktest({ dataSource: "simulated" }) as any, goals);
+    expect(r.verdict).toBe("cannot_evaluate");
+    expect(r.reason).toBe(SIMULATED_REASON);
+  });
+
+  it("returns cannot_evaluate when the sample is too small", () => {
+    const r = computeFeasibility(feasibleBacktest({ totalTrades: 12 }) as any, goals);
+    expect(r.verdict).toBe("cannot_evaluate");
+    expect(r.reason).toMatch(/statistical significance/);
+  });
+
+  it("passes a healthy strategy that meets all goals", () => {
+    const r = computeFeasibility(feasibleBacktest() as any, goals);
+    expect(r.verdict).toBe("pass");
+    expect(r.metrics?.retDDRatio).toBeGreaterThan(2);
+    expect(r.metrics?.tradesPerYear).toBeGreaterThan(20);
+  });
+
+  it("fails when annualized return is below goal", () => {
+    const r = computeFeasibility(
+      feasibleBacktest({ totalReturn: 4 }) as any,
+      goals
+    );
+    expect(r.verdict).toBe("fail");
+    expect(r.reason).toMatch(/annualized return/);
+  });
+
+  it("fails when drawdown exceeds goal", () => {
+    const r = computeFeasibility(feasibleBacktest({ maxDrawdown: 40 }) as any, goals);
+    expect(r.verdict).toBe("fail");
+    expect(r.reason).toMatch(/max drawdown/);
+  });
+
+  it("fails when trade frequency is below goal", () => {
+    const r = computeFeasibility(
+      feasibleBacktest({ totalTrades: 30, trades: Array.from({ length: 30 }, () => ({ profitLoss: 120 })) }) as any,
+      { ...goals, minTradesPerYear: 100 }
+    );
+    expect(r.verdict).toBe("fail");
+    expect(r.reason).toMatch(/trades\/year/);
+  });
+
+  it("fails when the average trade does not clear the cost buffer", () => {
+    const r = computeFeasibility(
+      feasibleBacktest({ trades: Array.from({ length: 40 }, () => ({ profitLoss: 10 })) }) as any,
+      goals
+    );
+    expect(r.verdict).toBe("fail");
+    expect(r.reason).toMatch(/slippage\/commission buffer/);
+  });
+
+  it("flags too-good-to-be-true results for manual review instead of passing", () => {
+    const r = computeFeasibility(feasibleBacktest({ sharpeRatio: 6.5 }) as any, goals);
+    expect(r.verdict).toBe("cannot_evaluate");
+    expect(r.reason).toMatch(/Manual review required/);
+    expect(r.metrics?.tooGoodToBeTrue).toBe(true);
+
+    const r2 = computeFeasibility(feasibleBacktest({ winRate: 97 }) as any, goals);
+    expect(r2.verdict).toBe("cannot_evaluate");
+    expect(r2.metrics?.tooGoodToBeTrue).toBe(true);
+  });
+
+  it("goal failures take precedence over the too-good flag", () => {
+    const r = computeFeasibility(
+      feasibleBacktest({ sharpeRatio: 6.5, maxDrawdown: 40 }) as any,
+      goals
+    );
+    expect(r.verdict).toBe("fail");
   });
 });

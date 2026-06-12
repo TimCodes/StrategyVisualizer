@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
-import { computeMonteCarlo, computeDeflatedSharpe, assertEvaluable, persistGateResult, computeIncubationVerdict } from "../services/gates";
+import { computeMonteCarlo, computeDeflatedSharpe, assertEvaluable, persistGateResult, computeIncubationVerdict, computeFeasibility } from "../services/gates";
 import { walkForwardCannotEvaluate, pboCannotEvaluate } from "../services/pbo";
 import { incubationObservationSchema, walkForwardConfigSchema } from "@shared/schema";
 
@@ -22,9 +22,17 @@ const backtestInputSchema = z.object({
   winRate: z.number().optional(),
   totalTrades: z.number().optional(),
   equityCurve: z.array(equityCurvePointSchema),
+  trades: z.array(z.object({ profitLoss: z.number() }).passthrough()).optional(),
   rawResults: z.record(z.unknown()).optional(),
   dataSource: z.string().optional(),
   runAt: z.string().or(z.date()).optional(),
+});
+
+const feasibilityBodySchema = z.object({
+  backtest: backtestInputSchema.optional(),
+  backtestId: z.string().optional(),
+  minSampleTrades: z.number().int().positive().optional(),
+  costPerTradeUsd: z.number().min(0).optional(),
 });
 
 const monteCarloBodySchema = z.object({
@@ -54,6 +62,55 @@ export function registerGateRoutes(app: Express) {
       if (!strategy) return res.status(404).json({ error: "Strategy not found" });
       const results = await storage.getGateResults(id);
       res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/strategies/:id/gates/feasibility — Davey Ch 12 preliminary
+  // analysis against the strategy's locked goals. Requires goals to be set.
+  app.post("/api/strategies/:id/gates/feasibility", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const strategy = await storage.getStrategyById(id);
+      if (!strategy) return res.status(404).json({ error: "Strategy not found" });
+      if (!strategy.goals) {
+        return res.status(400).json({
+          error: "No locked goals. Set goals via POST /api/strategies/:id/goals before running the feasibility gate.",
+        });
+      }
+
+      const parsed = feasibilityBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+      const body = parsed.data;
+
+      let bt: any;
+      if (body.backtestId) {
+        const backtests = await storage.getLeanBacktestsByProject(body.backtestId);
+        const found = backtests[0];
+        if (!found) return res.status(404).json({ error: "Backtest not found" });
+        bt = found;
+      } else if (body.backtest) {
+        bt = { ...body.backtest, dataSource: body.backtest.dataSource ?? "simulated" };
+      } else {
+        return res.status(400).json({ error: "Provide either backtest or backtestId" });
+      }
+
+      const result = computeFeasibility(bt, strategy.goals, {
+        minSampleTrades: body.minSampleTrades,
+        costPerTradeUsd: body.costPerTradeUsd,
+      });
+
+      const gateRecord = await persistGateResult(
+        id,
+        "feasibility",
+        result.verdict,
+        result.metrics as any,
+        bt.dataSource ?? "simulated",
+        result.reason
+      );
+
+      res.json({ ...result, goals: strategy.goals, gateResult: gateRecord });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -93,12 +150,13 @@ export function registerGateRoutes(app: Express) {
         return res.status(400).json({ error: "Provide either backtest or backtestId" });
       }
 
-      // Monte Carlo
+      // Monte Carlo — locked goals supply the default pass thresholds
+      // (explicit body values still win, e.g. for exploratory runs)
       const mcResult = computeMonteCarlo(bt, {
         iterations: body.iterations,
         ruinThreshold: body.ruinThreshold,
-        passRetDDRatio: body.passRetDDRatio,
-        passRiskOfRuin: body.passRiskOfRuin,
+        passRetDDRatio: body.passRetDDRatio ?? strategy.goals?.minRetDDRatio,
+        passRiskOfRuin: body.passRiskOfRuin ?? strategy.goals?.maxRiskOfRuin,
       });
 
       // DSR (computed separately, verdict is informational)
