@@ -3,6 +3,7 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { computeMonteCarlo, computeMonteCarloFromTrades, computeDeflatedSharpe, assertEvaluable, persistGateResult, computeIncubationVerdict, computeFeasibility } from "../services/gates";
 import { sweepFixedFraction, solveStartingCapital, largestLosingTrade } from "../services/position-sizing";
+import { analyzeDiversification } from "../services/diversification";
 import { walkForwardCannotEvaluate, pboCannotEvaluate } from "../services/pbo";
 import { executeWalkForward } from "../services/walk-forward-runner";
 import { isLeanAvailable } from "../services/lean-runner";
@@ -130,6 +131,70 @@ export function registerGateRoutes(app: Express) {
       );
 
       res.json({ ...result, goals: strategy.goals, gateResult: gateRecord });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/strategies/:id/gates/diversification — Davey Ch 15. The
+  // candidate's live-engine curve is measured against the existing
+  // portfolio members' curves: pairwise correlation (full-history and
+  // rolling max), combined equity stats, and the deciding with-vs-without
+  // combined Monte Carlo (Table 15.3).
+  app.post("/api/strategies/:id/gates/diversification", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const strategy = await storage.getStrategyById(id);
+      if (!strategy) return res.status(404).json({ error: "Strategy not found" });
+
+      const namedCurveSchema = z.object({
+        name: z.string().min(1),
+        equityCurve: z.array(equityCurvePointSchema).min(2),
+        dataSource: z.string().optional(),
+      });
+      const bodySchema = z.object({
+        candidate: namedCurveSchema,
+        portfolio: z.array(namedCurveSchema).default([]),
+        corrThreshold: z.number().gt(0).lt(1).optional(),
+        retDDTolerance: z.number().gt(0).max(1).optional(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+      const body = parsed.data;
+
+      // Every input must be real-engine data — a correlation against a
+      // random walk is meaningless.
+      for (const entry of [body.candidate, ...body.portfolio]) {
+        const evaluable = assertEvaluable(entry);
+        if (!evaluable.ok) {
+          const result = {
+            verdict: "cannot_evaluate" as const,
+            reason: `"${entry.name}": ${evaluable.reason}`,
+            metrics: null,
+          };
+          const gateRecord = await persistGateResult(
+            id, "diversification", result.verdict, null, entry.dataSource ?? "simulated", result.reason
+          );
+          return res.json({ ...result, gateResult: gateRecord });
+        }
+      }
+
+      const result = analyzeDiversification(
+        { name: body.candidate.name, curve: body.candidate.equityCurve },
+        body.portfolio.map((p) => ({ name: p.name, curve: p.equityCurve })),
+        { corrThreshold: body.corrThreshold, retDDTolerance: body.retDDTolerance }
+      );
+
+      const gateRecord = await persistGateResult(
+        id,
+        "diversification",
+        result.verdict,
+        result.metrics as any,
+        "live_engine",
+        result.reason
+      );
+
+      res.json({ ...result, gateResult: gateRecord });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
