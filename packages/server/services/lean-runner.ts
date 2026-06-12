@@ -144,9 +144,17 @@ export function parseLeanResults(raw: Record<string, unknown>): ParsedLeanResult
 export async function runLeanBacktest({
   projectName,
   code,
+  parameters,
 }: {
   projectName: string;
   code: string;
+  /**
+   * Forwarded to the algorithm via the project config.json "parameters"
+   * object — read in Python with self.get_parameter("name"). Used by the
+   * walk-forward runner to inject window dates (wf_start/wf_end) and
+   * grid values.
+   */
+  parameters?: Record<string, string | number>;
 }): Promise<ParsedLeanResult> {
   if (!/^[A-Za-z0-9_-]+$/.test(projectName)) {
     throw new Error(
@@ -161,9 +169,22 @@ export async function runLeanBacktest({
   const workspaceDir = process.env.LEAN_WORKSPACE_DIR ?? "./lean-workspace";
   const projectDir = path.join(workspaceDir, projectName);
 
-  // 1. Write strategy code to project dir
+  // 1. Write strategy code (and parameters, if any) to the project dir
   await fs.mkdir(projectDir, { recursive: true });
   await fs.writeFile(path.join(projectDir, "main.py"), code, "utf8");
+  if (parameters && Object.keys(parameters).length > 0) {
+    const stringified: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parameters)) stringified[k] = String(v);
+    await fs.writeFile(
+      path.join(projectDir, "config.json"),
+      JSON.stringify(
+        { "algorithm-language": "Python", parameters: stringified },
+        null,
+        2
+      ),
+      "utf8"
+    );
+  }
 
   // 2. Spawn the backtest command
   const command = process.env.LEAN_COMMAND ?? "lean";

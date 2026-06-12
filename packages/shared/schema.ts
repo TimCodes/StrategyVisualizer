@@ -67,14 +67,101 @@ export const incubationObservationSchema = z.object({
 });
 export type IncubationObservation = z.infer<typeof incubationObservationSchema>;
 
+// Davey Ch 13: every walk-forward input — windows, fitness function, and the
+// parameter grid — must be chosen BEFORE the analysis. Choosing them after
+// seeing results is optimization, so the whole config locks as one unit.
+export const fitnessFunctionSchema = z.enum([
+  "net_profit",
+  "return_on_account",
+  "equity_linearity",
+]);
+export type FitnessFunction = z.infer<typeof fitnessFunctionSchema>;
+
+export const wfParameterSchema = z.object({
+  name: z.string().min(1),
+  min: z.number(),
+  max: z.number(),
+  step: z.number().positive(),
+});
+export type WfParameter = z.infer<typeof wfParameterSchema>;
+
 export const walkForwardConfigSchema = z.object({
   inSampleDays: z.number().int().positive(),
   outOfSampleDays: z.number().int().positive(),
   anchored: z.boolean(),
   numWindows: z.number().int().positive(),
+  /** ISO date (YYYY-MM-DD) the first in-sample window starts at */
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  fitnessFunction: fitnessFunctionSchema.default("net_profit"),
+  parameters: z.array(wfParameterSchema).default([]),
   lockedAt: z.date().optional(),
 });
 export type WalkForwardConfig = z.infer<typeof walkForwardConfigSchema>;
+
+export const wfWindowResultSchema = z.object({
+  index: z.number(),
+  isStart: z.string(),
+  isEnd: z.string(),
+  oosStart: z.string(),
+  oosEnd: z.string(),
+  bestParams: z.record(z.number()),
+  /** fitness of every combo over this window's IS period (PBO matrix column) */
+  comboFitness: z.array(z.number()),
+  isMetrics: z.object({
+    totalReturn: z.number(),
+    maxDrawdown: z.number(),
+    sharpeRatio: z.number(),
+    totalTrades: z.number(),
+  }),
+  oosMetrics: z.object({
+    totalReturn: z.number(),
+    maxDrawdown: z.number(),
+    sharpeRatio: z.number(),
+    totalTrades: z.number(),
+  }),
+});
+export type WfWindowResult = z.infer<typeof wfWindowResultSchema>;
+
+export const walkForwardRunSchema = z.object({
+  id: z.string(),
+  strategyId: z.string(),
+  projectName: z.string(),
+  status: z.enum(["running", "completed", "failed"]),
+  config: walkForwardConfigSchema,
+  windows: z.array(wfWindowResultSchema).default([]),
+  stitchedCurve: z.array(z.object({ date: z.string(), value: z.number() })).default([]),
+  wfe: z.number().nullable().optional(),
+  pbo: z.number().nullable().optional(),
+  verdict: z.enum(["pass", "fail", "cannot_evaluate"]).nullable().optional(),
+  reason: z.string().nullable().optional(),
+  errorLog: z.string().nullable().optional(),
+  startedAt: z.date(),
+  completedAt: z.date().nullable().optional(),
+});
+export type WalkForwardRun = z.infer<typeof walkForwardRunSchema>;
+
+export const insertWalkForwardRunSchema = walkForwardRunSchema.omit({
+  id: true,
+  startedAt: true,
+});
+export type InsertWalkForwardRun = z.infer<typeof insertWalkForwardRunSchema>;
+
+export const walkForwardRunsTable = pgTable("walk_forward_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  strategyId: text("strategy_id").notNull(),
+  projectName: text("project_name").notNull(),
+  status: text("status").notNull(),
+  config: jsonb("config").notNull(),
+  windows: jsonb("windows").notNull().default([]),
+  stitchedCurve: jsonb("stitched_curve").notNull().default([]),
+  wfe: real("wfe"),
+  pbo: real("pbo"),
+  verdict: text("verdict"),
+  reason: text("reason"),
+  errorLog: text("error_log"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
 
 export const refinementLogEntrySchema = z.object({
   refinementType: z.enum(["logic_fix", "optimization"]),

@@ -908,24 +908,44 @@ function WalkForwardConfigForm({ strategyId, onSaved }: { strategyId: string; on
   const { toast } = useToast();
   const [inSample, setInSample] = useState("252");
   const [outSample, setOutSample] = useState("63");
-  const [windows, setWindows] = useState("5");
+  const [windows, setWindows] = useState("4");
   const [anchored, setAnchored] = useState(false);
+  const [startDate, setStartDate] = useState("2015-01-01");
+  const [fitness, setFitness] = useState<"net_profit" | "return_on_account" | "equity_linearity">("net_profit");
+  const [paramLines, setParamLines] = useState("");
 
   const mutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", `/api/strategies/${strategyId}/gates/walk-forward/config`, {
+    mutationFn: () => {
+      // One parameter per line: name,min,max,step
+      const parameters = paramLines
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((l) => {
+          const [name, min, max, step] = l.split(",").map((s) => s.trim());
+          return { name, min: parseFloat(min), max: parseFloat(max), step: parseFloat(step) };
+        });
+      return apiRequest("POST", `/api/strategies/${strategyId}/gates/walk-forward/config`, {
         inSampleDays: parseInt(inSample),
         outOfSampleDays: parseInt(outSample),
         numWindows: parseInt(windows),
         anchored,
-      }),
-    onSuccess: () => { toast({ title: "Walk-forward config saved" }); onSaved(); },
+        startDate,
+        fitnessFunction: fitness,
+        parameters,
+      });
+    },
+    onSuccess: () => { toast({ title: "Walk-forward config locked", description: "Config is now immutable for this strategy." }); onSaved(); },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
   return (
     <div className="space-y-2 border-t border-border pt-2">
       <p className="text-xs font-medium text-text-primary">Walk-Forward Config</p>
+      <p className="text-xs text-text-secondary">
+        Choose windows, fitness function, and the parameter grid before any
+        analysis — the config locks permanently on save (Davey Ch 13).
+      </p>
       <div className="grid grid-cols-3 gap-2">
         <div className="space-y-1">
           <Label className="text-xs">IS days</Label>
@@ -939,16 +959,33 @@ function WalkForwardConfigForm({ strategyId, onSaved }: { strategyId: string; on
           <Label className="text-xs">Windows</Label>
           <Input className="h-7 text-xs" type="number" value={windows} onChange={e => setWindows(e.target.value)} />
         </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Start date</Label>
+          <Input className="h-7 text-xs" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+        </div>
+        <div className="space-y-1 col-span-2">
+          <Label className="text-xs">Fitness function</Label>
+          <Select value={fitness} onValueChange={(v) => setFitness(v as any)}>
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="net_profit">Net profit</SelectItem>
+              <SelectItem value="return_on_account">Return on account (ret/DD)</SelectItem>
+              <SelectItem value="equity_linearity">Equity linearity (R²)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
-      <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
-        <input
-          type="checkbox"
-          checked={anchored}
-          onChange={e => setAnchored(e.target.checked)}
-          className="accent-primary"
+      <div className="space-y-1">
+        <Label className="text-xs">Parameters — one per line: name,min,max,step</Label>
+        <textarea
+          className="w-full h-16 text-xs bg-surface-raised border border-border rounded p-2 font-mono"
+          placeholder={"fast,5,20,5\nslow,30,60,15"}
+          value={paramLines}
+          onChange={(e) => setParamLines(e.target.value)}
         />
-        Anchored (expanding IS window)
-      </label>
+      </div>
       <Button
         size="sm"
         variant="outline"
@@ -956,7 +993,8 @@ function WalkForwardConfigForm({ strategyId, onSaved }: { strategyId: string; on
         onClick={() => mutation.mutate()}
         disabled={mutation.isPending}
       >
-        Save Config
+        <Lock className="h-3 w-3 mr-1" />
+        Save & Lock Config (immutable)
       </Button>
     </div>
   );

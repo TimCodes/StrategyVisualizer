@@ -3,6 +3,9 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { computeMonteCarlo, computeDeflatedSharpe, assertEvaluable, persistGateResult, computeIncubationVerdict, computeFeasibility } from "../services/gates";
 import { walkForwardCannotEvaluate, pboCannotEvaluate } from "../services/pbo";
+import { executeWalkForward } from "../services/walk-forward-runner";
+import { isLeanAvailable } from "../services/lean-runner";
+import { emitToSocket, getIO } from "../ws";
 import { incubationObservationSchema, walkForwardConfigSchema } from "@shared/schema";
 
 // ─── request body schemas ───────────────────────────────────
@@ -226,6 +229,121 @@ export function registerGateRoutes(app: Express) {
         lockedAt: new Date(),
       });
       res.json(updated);
+    } catch (err: any) {
+      if (err.message === "Walk-forward config already locked") {
+        return res.status(409).json({ error: err.message });
+      }
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/strategies/:id/gates/walk-forward/run — execute a real
+  // walk-forward analysis against LEAN. Requires a locked config (with
+  // startDate and a parameter grid) and LEAN_ENABLED=true. Runs in the
+  // background; progress streams over Socket.IO (wf:progress / wf:complete /
+  // wf:error). Every run records an optimization trial — re-running
+  // walk-forward is a development attempt and deflates DSR accordingly.
+  app.post("/api/strategies/:id/gates/walk-forward/run", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const strategy = await storage.getStrategyById(id);
+      if (!strategy) return res.status(404).json({ error: "Strategy not found" });
+
+      const config = strategy.walkForwardConfig;
+      if (!config?.lockedAt) {
+        return res.status(400).json({ error: "Lock a walk-forward config first (POST .../gates/walk-forward/config)." });
+      }
+      if (!config.startDate) {
+        return res.status(400).json({ error: "Walk-forward config has no startDate; re-create the strategy config with one." });
+      }
+      if (!isLeanAvailable()) {
+        return res.status(400).json({ error: "LEAN is not enabled. Walk-forward needs the real engine (LEAN_ENABLED=true)." });
+      }
+
+      const bodySchema = z.object({
+        projectName: z.string().regex(/^[A-Za-z0-9_-]+$/),
+        code: z.string().min(10),
+        socketId: z.string().optional(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+      const { projectName, code, socketId } = parsed.data;
+
+      await storage.recordTrial({
+        trialType: "optimization",
+        strategyId: id,
+        leanProjectName: projectName,
+        promptSummary: `walk-forward run (${config.numWindows} windows, ${config.fitnessFunction})`,
+      });
+
+      const run = await storage.createWalkForwardRun({
+        strategyId: id,
+        projectName,
+        status: "running",
+        config,
+        windows: [],
+        stitchedCurve: [],
+      });
+
+      const io = getIO();
+      const emit = (event: string, data: unknown) => {
+        if (socketId) emitToSocket(socketId, event, data);
+        else io?.emit(event, data);
+      };
+
+      res.json({ runId: run.id, status: "running" });
+
+      (async () => {
+        try {
+          const result = await executeWalkForward({
+            projectName,
+            code,
+            config: config as typeof config & { startDate: string },
+            goals: strategy.goals,
+            onProgress: (p) => emit("wf:progress", { runId: run.id, ...p }),
+          });
+
+          const completed = await storage.updateWalkForwardRun(run.id, {
+            status: "completed",
+            windows: result.windows,
+            stitchedCurve: result.stitchedCurve,
+            wfe: result.wfe,
+            pbo: result.pbo,
+            verdict: result.verdict.verdict,
+            reason: result.verdict.reason,
+            completedAt: new Date(),
+          });
+
+          await persistGateResult(
+            id,
+            "walk_forward",
+            result.verdict.verdict,
+            result.verdict.metrics as any,
+            "live_engine",
+            result.verdict.reason
+          );
+
+          emit("wf:complete", completed);
+        } catch (err) {
+          const msg = (err as Error).message;
+          await storage.updateWalkForwardRun(run.id, {
+            status: "failed",
+            errorLog: msg,
+            completedAt: new Date(),
+          }).catch(() => {});
+          emit("wf:error", { runId: run.id, error: msg });
+        }
+      })();
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/strategies/:id/walk-forward/runs
+  app.get("/api/strategies/:id/walk-forward/runs", async (req: Request, res: Response) => {
+    try {
+      const runs = await storage.getWalkForwardRuns(req.params.id);
+      res.json(runs);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

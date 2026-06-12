@@ -36,6 +36,9 @@ import {
   WalkForwardConfig,
   StrategyGoals,
   SetGoalsBody,
+  WalkForwardRun,
+  InsertWalkForwardRun,
+  walkForwardRunsTable,
   strategiesTable,
   tradesTable,
   backtestResultsTable,
@@ -96,6 +99,10 @@ export interface IStorage {
   startIncubation(strategyId: string, requiredDays: number): Promise<Strategy>;
   addIncubationObservation(strategyId: string, obs: IncubationObservation): Promise<Strategy>;
   updateWalkForwardConfig(strategyId: string, config: WalkForwardConfig): Promise<Strategy>;
+
+  createWalkForwardRun(data: InsertWalkForwardRun): Promise<WalkForwardRun>;
+  updateWalkForwardRun(id: string, data: Partial<InsertWalkForwardRun>): Promise<WalkForwardRun>;
+  getWalkForwardRuns(strategyId: string): Promise<WalkForwardRun[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -111,6 +118,7 @@ export class MemStorage implements IStorage {
   private leanBacktests: Map<string, LeanBacktest>;
   private trials: Trial[];
   private gateResults: Map<string, GateResult>;
+  private wfRuns: Map<string, WalkForwardRun>;
 
   constructor() {
     this.strategies = new Map();
@@ -123,6 +131,7 @@ export class MemStorage implements IStorage {
     this.leanBacktests = new Map();
     this.trials = [];
     this.gateResults = new Map();
+    this.wfRuns = new Map();
     this.memSettings = {
       id: "default",
       refreshInterval: "30s",
@@ -1345,6 +1354,11 @@ export class MemStorage implements IStorage {
 
   async updateWalkForwardConfig(strategyId: string, config: WalkForwardConfig): Promise<Strategy> {
     const buildUpdate = (existing: Strategy): Strategy => {
+      // Davey Ch 13: testing multiple in/out combinations and keeping the
+      // best one is optimization. The config locks on first set.
+      if (existing.walkForwardConfig?.lockedAt) {
+        throw new Error("Walk-forward config already locked");
+      }
       const entry: GateHistoryEntry = {
         stage: existing.stage,
         result: "passed",
@@ -1370,13 +1384,131 @@ export class MemStorage implements IStorage {
         return row ? this.mapDbStrategy(row) : updated;
       }
     } catch (err) {
-      if ((err as Error).message === "Strategy not found") throw err;
+      const msg = (err as Error).message;
+      if (msg === "Strategy not found" || msg === "Walk-forward config already locked") throw err;
     }
     const existing = this.strategies.get(strategyId);
     if (!existing) throw new Error("Strategy not found");
     const updated = buildUpdate(existing);
     this.strategies.set(strategyId, updated);
     return updated;
+  }
+
+  // ─── Walk-Forward Runs ───────────────────────────────────────
+
+  async createWalkForwardRun(data: InsertWalkForwardRun): Promise<WalkForwardRun> {
+    const run: WalkForwardRun = {
+      ...data,
+      id: randomUUID(),
+      startedAt: new Date(),
+    };
+    this.wfRuns.set(run.id, run);
+    try {
+      const db = await getDb();
+      if (db) {
+        const [row] = await db.insert(walkForwardRunsTable).values({
+          id: run.id,
+          strategyId: run.strategyId,
+          projectName: run.projectName,
+          status: run.status,
+          config: this.wfConfigToJson(run.config),
+          windows: run.windows as any,
+          stitchedCurve: run.stitchedCurve as any,
+          wfe: run.wfe ?? null,
+          pbo: run.pbo ?? null,
+          verdict: run.verdict ?? null,
+          reason: run.reason ?? null,
+          errorLog: run.errorLog ?? null,
+          startedAt: run.startedAt,
+          completedAt: run.completedAt ?? null,
+        }).returning();
+        if (row) return this.mapDbWfRun(row);
+      }
+    } catch {
+      // in-memory copy already set above
+    }
+    return run;
+  }
+
+  async updateWalkForwardRun(id: string, data: Partial<InsertWalkForwardRun>): Promise<WalkForwardRun> {
+    const existing = this.wfRuns.get(id);
+    const updatedMem: WalkForwardRun | undefined = existing
+      ? { ...existing, ...data, config: data.config ?? existing.config }
+      : undefined;
+    if (updatedMem) this.wfRuns.set(id, updatedMem);
+    try {
+      const db = await getDb();
+      if (db) {
+        const values: Record<string, unknown> = {};
+        if (data.status !== undefined) values.status = data.status;
+        if (data.windows !== undefined) values.windows = data.windows;
+        if (data.stitchedCurve !== undefined) values.stitchedCurve = data.stitchedCurve;
+        if (data.wfe !== undefined) values.wfe = data.wfe;
+        if (data.pbo !== undefined) values.pbo = data.pbo;
+        if (data.verdict !== undefined) values.verdict = data.verdict;
+        if (data.reason !== undefined) values.reason = data.reason;
+        if (data.errorLog !== undefined) values.errorLog = data.errorLog;
+        if (data.completedAt !== undefined) values.completedAt = data.completedAt;
+        const [row] = await db.update(walkForwardRunsTable)
+          .set(values as any)
+          .where(eq(walkForwardRunsTable.id, id))
+          .returning();
+        if (row) return this.mapDbWfRun(row);
+      }
+    } catch {
+      // in-memory copy already updated above
+    }
+    if (!updatedMem) throw new Error("Walk-forward run not found");
+    return updatedMem;
+  }
+
+  async getWalkForwardRuns(strategyId: string): Promise<WalkForwardRun[]> {
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(walkForwardRunsTable)
+          .where(eq(walkForwardRunsTable.strategyId, strategyId))
+          .orderBy(desc(walkForwardRunsTable.startedAt));
+        return rows.map((r) => this.mapDbWfRun(r));
+      }
+    } catch {
+      // fall through to in-memory
+    }
+    return Array.from(this.wfRuns.values())
+      .filter((r) => r.strategyId === strategyId)
+      .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+  }
+
+  private wfConfigToJson(config: WalkForwardConfig) {
+    return {
+      ...config,
+      lockedAt: config.lockedAt instanceof Date ? config.lockedAt.toISOString() : config.lockedAt,
+    } as any;
+  }
+
+  private mapDbWfRun(row: typeof walkForwardRunsTable.$inferSelect): WalkForwardRun {
+    const cfg = row.config as any;
+    return {
+      id: row.id,
+      strategyId: row.strategyId,
+      projectName: row.projectName,
+      status: row.status as WalkForwardRun["status"],
+      config: {
+        ...cfg,
+        lockedAt: cfg?.lockedAt ? new Date(cfg.lockedAt) : undefined,
+      },
+      windows: (row.windows as any) ?? [],
+      stitchedCurve: (row.stitchedCurve as any) ?? [],
+      wfe: row.wfe ?? null,
+      pbo: row.pbo ?? null,
+      verdict: (row.verdict as WalkForwardRun["verdict"]) ?? null,
+      reason: row.reason ?? null,
+      errorLog: row.errorLog ?? null,
+      startedAt: row.startedAt instanceof Date ? row.startedAt : new Date(row.startedAt),
+      completedAt: row.completedAt
+        ? row.completedAt instanceof Date ? row.completedAt : new Date(row.completedAt)
+        : null,
+    };
   }
 
   // ─── DB helpers ──────────────────────────────────────────────
@@ -1419,10 +1551,7 @@ export class MemStorage implements IStorage {
         : null,
       walkForwardConfig: s.walkForwardConfig
         ? ({
-            inSampleDays: s.walkForwardConfig.inSampleDays,
-            outOfSampleDays: s.walkForwardConfig.outOfSampleDays,
-            anchored: s.walkForwardConfig.anchored,
-            numWindows: s.walkForwardConfig.numWindows,
+            ...s.walkForwardConfig,
             lockedAt: s.walkForwardConfig.lockedAt instanceof Date
               ? s.walkForwardConfig.lockedAt.toISOString()
               : s.walkForwardConfig.lockedAt,
@@ -1469,10 +1598,7 @@ export class MemStorage implements IStorage {
         : undefined,
       walkForwardConfig: row.walkForwardConfig
         ? ({
-            inSampleDays: (row.walkForwardConfig as any).inSampleDays,
-            outOfSampleDays: (row.walkForwardConfig as any).outOfSampleDays,
-            anchored: (row.walkForwardConfig as any).anchored,
-            numWindows: (row.walkForwardConfig as any).numWindows,
+            ...(row.walkForwardConfig as any),
             lockedAt: (row.walkForwardConfig as any).lockedAt
               ? new Date((row.walkForwardConfig as any).lockedAt)
               : undefined,
