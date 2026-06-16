@@ -4,6 +4,7 @@ import { storage } from "../storage";
 import { computeMonteCarlo, computeMonteCarloFromTrades, computeDeflatedSharpe, assertEvaluable, persistGateResult, computeIncubationVerdict, computeFeasibility } from "../services/gates";
 import { sweepFixedFraction, solveStartingCapital, largestLosingTrade } from "../services/position-sizing";
 import { analyzeDiversification } from "../services/diversification";
+import { buildTrackingReport } from "../services/monitoring";
 import { walkForwardCannotEvaluate, pboCannotEvaluate } from "../services/pbo";
 import { executeWalkForward } from "../services/walk-forward-runner";
 import { isLeanAvailable } from "../services/lean-runner";
@@ -363,6 +364,22 @@ export function registerGateRoutes(app: Express) {
         mcResult.reason ?? dsrResult?.notValidReason ?? null
       );
 
+      // Davey Ch 23: a trade-level MC pass freezes the expected-performance
+      // baseline that incubation and live monitoring will judge against.
+      if (mcResult.verdict === "pass" && hasTrades) {
+        const m = mcResult.metrics as any;
+        const tradePnLs: number[] = bt.trades.map((t: any) => t.profitLoss);
+        await storage.setExpectedPerformance(id, {
+          avgTradePnL: tradePnLs.reduce((s: number, v: number) => s + v, 0) / tradePnLs.length,
+          tradesPerYear: m.tradesPerYear,
+          expectedAnnualReturnPct: m.medianReturn * 100,
+          expectedMaxDrawdownPct: m.medianMaxDD * 100,
+          bands: m.bands ?? [],
+        }).catch(() => {
+          // Baseline frozen (already incubating/live) — keep the original.
+        });
+      }
+
       res.json({
         verdict: mcResult.verdict,
         reason: mcResult.reason,
@@ -598,7 +615,29 @@ export function registerGateRoutes(app: Express) {
       if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
       const updated = await storage.addIncubationObservation(id, parsed.data);
-      res.json({ strategy: updated, observationCount: updated.incubationObservations?.length ?? 0 });
+
+      // Re-evaluate the tracking report on every new data point; a quit-rule
+      // breach raises an alert — the app never auto-liquidates (Davey: the
+      // human is the caretaker).
+      let tracking: ReturnType<typeof buildTrackingReport> | null = null;
+      if (updated.expectedPerformance) {
+        tracking = buildTrackingReport(updated);
+        if ("quitRuleStatus" in tracking && tracking.quitRuleStatus?.breached) {
+          getIO()?.emit("risk:alert", {
+            strategyId: id,
+            strategyName: updated.name,
+            type: "quit_rule_breached",
+            detail: tracking.quitRuleStatus.detail,
+            at: new Date().toISOString(),
+          });
+        }
+      }
+
+      res.json({
+        strategy: updated,
+        observationCount: updated.incubationObservations?.length ?? 0,
+        tracking,
+      });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

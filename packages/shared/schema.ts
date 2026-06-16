@@ -62,10 +62,75 @@ export const incubationObservationSchema = z.object({
   date: z.string(),
   observedReturn: z.number(),
   observedDrawdown: z.number(),
+  /** Dollar P&L for the period — feeds the Davey Ch 23 tracking bands */
+  observedPnL: z.number().optional(),
   note: z.string().optional(),
   source: z.enum(["paper", "live", "manual"]).default("manual"),
 });
 export type IncubationObservation = z.infer<typeof incubationObservationSchema>;
+
+// ── Davey Ch 23 — expected-performance baseline ──────────────
+// Snapshotted when the Monte Carlo gate passes on live-engine data.
+// Forward results are judged against THESE numbers, frozen at approval
+// time — not against whatever the backtest says later.
+export const expectedPerformanceSchema = z.object({
+  avgTradePnL: z.number(),
+  tradesPerYear: z.number(),
+  expectedAnnualReturnPct: z.number(),
+  expectedMaxDrawdownPct: z.number(),
+  /** MC cumulative-P&L percentiles by trade/period index (Fig 23.8 bands) */
+  bands: z.array(z.object({
+    trade: z.number(),
+    p2_5: z.number(),
+    p10: z.number(),
+    p50: z.number(),
+    p90: z.number(),
+    p97_5: z.number(),
+  })),
+  snappedAt: z.date(),
+});
+export type ExpectedPerformance = z.infer<typeof expectedPerformanceSchema>;
+
+// ── Davey Ch 24 — quit rule, decided BEFORE going live ───────
+export const quitRuleSchema = z.object({
+  type: z.enum(["max_drawdown_usd", "percentile_floor"]),
+  /** max_drawdown_usd: dollar drawdown; percentile_floor: band (2.5 or 10) */
+  value: z.number().positive(),
+  lockedAt: z.date(),
+});
+export type QuitRule = z.infer<typeof quitRuleSchema>;
+export const setQuitRuleBodySchema = quitRuleSchema.omit({ lockedAt: true });
+export type SetQuitRuleBody = z.infer<typeof setQuitRuleBodySchema>;
+
+// ── Davey Ch 24 — periodic structured review ─────────────────
+export const strategyReviewSchema = z.object({
+  id: z.string(),
+  strategyId: z.string(),
+  periodLabel: z.string(),
+  surprised: z.string(),
+  resultsInLineWithExpectations: z.string(),
+  fillsComparable: z.string(),
+  reasonToStop: z.string(),
+  reasonToChangeSizing: z.string(),
+  note: z.string().optional(),
+  createdAt: z.date(),
+});
+export type StrategyReview = z.infer<typeof strategyReviewSchema>;
+export const insertStrategyReviewSchema = strategyReviewSchema.omit({ id: true, createdAt: true });
+export type InsertStrategyReview = z.infer<typeof insertStrategyReviewSchema>;
+
+export const strategyReviewsTable = pgTable("strategy_reviews", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  strategyId: text("strategy_id").notNull(),
+  periodLabel: text("period_label").notNull(),
+  surprised: text("surprised").notNull(),
+  resultsInLineWithExpectations: text("results_in_line").notNull(),
+  fillsComparable: text("fills_comparable").notNull(),
+  reasonToStop: text("reason_to_stop").notNull(),
+  reasonToChangeSizing: text("reason_to_change_sizing").notNull(),
+  note: text("note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
 
 // Davey Ch 13: every walk-forward input — windows, fitness function, and the
 // parameter grid — must be chosen BEFORE the analysis. Choosing them after
@@ -230,6 +295,8 @@ export const strategySchema = z.object({
   edgeAssessment: z.enum(["strong", "weak", "none"]).optional(),
   goals: strategyGoalsSchema.optional(),
   positionSizingPlan: positionSizingPlanSchema.optional(),
+  expectedPerformance: expectedPerformanceSchema.optional(),
+  quitRule: quitRuleSchema.optional(),
   refinementHistory: z.array(refinementLogEntrySchema).default([]),
   walkForwardConfig: walkForwardConfigSchema.optional(),
   incubationStartedAt: z.date().optional(),
@@ -401,6 +468,8 @@ export const strategiesTable = pgTable("strategies", {
   edgeAssessment: text("edge_assessment"),
   goals: jsonb("goals"),
   positionSizingPlan: jsonb("position_sizing_plan"),
+  expectedPerformance: jsonb("expected_performance"),
+  quitRule: jsonb("quit_rule"),
   walkForwardConfig: jsonb("walk_forward_config"),
   incubationStartedAt: timestamp("incubation_started_at"),
   requiredDays: integer("required_days"),

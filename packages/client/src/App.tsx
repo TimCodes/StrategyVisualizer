@@ -8,6 +8,7 @@ import Sidebar from "@/components/layout/Sidebar";
 import Overview from "@/pages/Overview";
 import Strategies from "@/pages/Strategies";
 import Backtesting from "@/pages/Backtesting";
+import Monitoring from "@/pages/Monitoring";
 import Portfolio from "@/pages/Portfolio";
 import Markets from "@/pages/Markets";
 import Chat from "@/pages/Chat";
@@ -86,6 +87,7 @@ function Router() {
       <Route path="/strategies" component={Strategies} />
       <Route path="/editor" component={EditorPage} />
       <Route path="/backtesting" component={Backtesting} />
+      <Route path="/monitoring" component={Monitoring} />
       <Route path="/portfolio" component={Portfolio} />
       <Route path="/markets" component={Markets} />
       <Route path="/chat" component={Chat} />

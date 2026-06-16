@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { BarChart3, Bot, History, Briefcase, Globe, Settings, MessageSquare, Swords, Code2 } from "lucide-react";
+import { BarChart3, Bot, History, Briefcase, Globe, Settings, MessageSquare, Swords, Code2, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigationItems = [
@@ -22,6 +22,11 @@ const navigationItems = [
     name: "Backtesting",
     href: "/backtesting",
     icon: History,
+  },
+  {
+    name: "Monitoring",
+    href: "/monitoring",
+    icon: Activity,
   },
   {
     name: "Portfolio",

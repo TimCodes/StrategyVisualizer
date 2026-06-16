@@ -38,6 +38,12 @@ import {
   SetGoalsBody,
   PositionSizingPlan,
   SetSizingPlanBody,
+  ExpectedPerformance,
+  QuitRule,
+  SetQuitRuleBody,
+  StrategyReview,
+  InsertStrategyReview,
+  strategyReviewsTable,
   WalkForwardRun,
   InsertWalkForwardRun,
   walkForwardRunsTable,
@@ -58,6 +64,10 @@ export interface IStorage {
   appendRefinementLog(id: string, entry: { refinementType: "logic_fix" | "optimization"; rationale: string }): Promise<void>;
   setStrategyGoals(id: string, goals: SetGoalsBody): Promise<Strategy>;
   setPositionSizingPlan(id: string, plan: SetSizingPlanBody): Promise<Strategy>;
+  setExpectedPerformance(id: string, exp: Omit<ExpectedPerformance, "snappedAt">): Promise<Strategy>;
+  setQuitRule(id: string, rule: SetQuitRuleBody): Promise<Strategy>;
+  createStrategyReview(data: InsertStrategyReview): Promise<StrategyReview>;
+  getStrategyReviews(strategyId: string): Promise<StrategyReview[]>;
 
   getTrades(): Promise<Trade[]>;
   getTradesByStrategy(strategyId: string): Promise<Trade[]>;
@@ -122,6 +132,7 @@ export class MemStorage implements IStorage {
   private trials: Trial[];
   private gateResults: Map<string, GateResult>;
   private wfRuns: Map<string, WalkForwardRun>;
+  private strategyReviews: StrategyReview[];
 
   constructor() {
     this.strategies = new Map();
@@ -135,6 +146,7 @@ export class MemStorage implements IStorage {
     this.trials = [];
     this.gateResults = new Map();
     this.wfRuns = new Map();
+    this.strategyReviews = [];
     this.memSettings = {
       id: "default",
       refreshInterval: "30s",
@@ -517,10 +529,140 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
+  /**
+   * Shared helper for the lock-once strategy mutations (goals, sizing plan,
+   * quit rule, expected performance). Applies `mutate` against the db copy
+   * when available, falling back to the Map; rethrows domain errors.
+   */
+  private async mutateStrategy(
+    id: string,
+    mutate: (s: Strategy) => Strategy,
+    domainErrors: string[]
+  ): Promise<Strategy> {
+    try {
+      const db = await getDb();
+      if (db) {
+        const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, id));
+        if (!existing) throw new Error("Strategy not found");
+        const updated = mutate(this.mapDbStrategy(existing));
+        const [row] = await db
+          .update(strategiesTable)
+          .set(this.strategyToDbValues(updated))
+          .where(eq(strategiesTable.id, id))
+          .returning();
+        return row ? this.mapDbStrategy(row) : updated;
+      }
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg === "Strategy not found" || domainErrors.includes(msg)) throw err;
+      // DB connection error — fall through to Map
+    }
+    const existing = this.strategies.get(id);
+    if (!existing) throw new Error("Strategy not found");
+    const updated = mutate(existing);
+    this.strategies.set(id, updated);
+    return updated;
+  }
+
+  async setExpectedPerformance(
+    id: string,
+    exp: Omit<ExpectedPerformance, "snappedAt">
+  ): Promise<Strategy> {
+    // The baseline freezes once forward testing begins — re-snapshotting
+    // after incubation starts would be moving the goalposts.
+    return this.mutateStrategy(
+      id,
+      (s) => {
+        if (s.stage === "incubation" || s.stage === "live") {
+          throw new Error("Expected performance is frozen once incubation begins");
+        }
+        return { ...s, expectedPerformance: { ...exp, snappedAt: new Date() } };
+      },
+      ["Expected performance is frozen once incubation begins"]
+    );
+  }
+
+  async setQuitRule(id: string, rule: SetQuitRuleBody): Promise<Strategy> {
+    // Davey Ch 24: "As long as I stick to the rule I create at the start,
+    // I'd be doing fine." One shot, before going live.
+    return this.mutateStrategy(
+      id,
+      (s) => {
+        if (s.quitRule) throw new Error("Quit rule already locked");
+        if (s.stage === "live") throw new Error("Quit rule must be locked before going live");
+        return { ...s, quitRule: { ...rule, lockedAt: new Date() } };
+      },
+      ["Quit rule already locked", "Quit rule must be locked before going live"]
+    );
+  }
+
+  async createStrategyReview(data: InsertStrategyReview): Promise<StrategyReview> {
+    const review: StrategyReview = { ...data, id: randomUUID(), createdAt: new Date() };
+    this.strategyReviews.push(review);
+    try {
+      const db = await getDb();
+      if (db) {
+        const [row] = await db.insert(strategyReviewsTable).values({
+          id: review.id,
+          strategyId: review.strategyId,
+          periodLabel: review.periodLabel,
+          surprised: review.surprised,
+          resultsInLineWithExpectations: review.resultsInLineWithExpectations,
+          fillsComparable: review.fillsComparable,
+          reasonToStop: review.reasonToStop,
+          reasonToChangeSizing: review.reasonToChangeSizing,
+          note: review.note ?? null,
+          createdAt: review.createdAt,
+        }).returning();
+        if (row) return this.mapDbReview(row);
+      }
+    } catch {
+      // in-memory copy already pushed above
+    }
+    return review;
+  }
+
+  async getStrategyReviews(strategyId: string): Promise<StrategyReview[]> {
+    try {
+      const db = await getDb();
+      if (db) {
+        const rows = await db.select().from(strategyReviewsTable)
+          .where(eq(strategyReviewsTable.strategyId, strategyId))
+          .orderBy(desc(strategyReviewsTable.createdAt));
+        return rows.map((r) => this.mapDbReview(r));
+      }
+    } catch {
+      // fall through to in-memory
+    }
+    return this.strategyReviews
+      .filter((r) => r.strategyId === strategyId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  private mapDbReview(row: typeof strategyReviewsTable.$inferSelect): StrategyReview {
+    return {
+      id: row.id,
+      strategyId: row.strategyId,
+      periodLabel: row.periodLabel,
+      surprised: row.surprised,
+      resultsInLineWithExpectations: row.resultsInLineWithExpectations,
+      fillsComparable: row.fillsComparable,
+      reasonToStop: row.reasonToStop,
+      reasonToChangeSizing: row.reasonToChangeSizing,
+      note: row.note ?? undefined,
+      createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
+    };
+  }
+
   async updateStrategy(id: string, data: Partial<InsertStrategy>): Promise<Strategy> {
     // Gate transition fields are managed exclusively by recordGate;
-    // goals and the sizing plan are locked via their dedicated setters only
-    const { stage: _s, gateStatus: _gs, gateHistory: _gh, goals: _g, positionSizingPlan: _p, ...safeData } = data as any;
+    // goals, sizing plan, quit rule, and the expected-performance baseline
+    // are locked via their dedicated setters only
+    const {
+      stage: _s, gateStatus: _gs, gateHistory: _gh, goals: _g,
+      positionSizingPlan: _p, quitRule: _q, expectedPerformance: _e,
+      ...safeData
+    } = data as any;
     try {
       const db = await getDb();
       if (db) {
@@ -557,6 +699,15 @@ export class MemStorage implements IStorage {
       let gateStatus = s.gateStatus;
       if (params.result === "passed") {
         const next = nextStage(s.stage);
+        // Davey Ch 20/24: going live requires the pre-declared artifacts.
+        if (next === "live") {
+          if (!s.positionSizingPlan) {
+            throw new Error("Cannot go live: lock a position sizing plan first");
+          }
+          if (!s.quitRule) {
+            throw new Error("Cannot go live: lock a quit rule first");
+          }
+        }
         if (next !== null) { stage = next; gateStatus = "in_progress"; }
         else { gateStatus = "passed"; }
       } else if (params.result === "failed") {
@@ -580,7 +731,8 @@ export class MemStorage implements IStorage {
         return row ? this.mapDbStrategy(row) : updated;
       }
     } catch (err) {
-      if ((err as Error).message === "Strategy not found") throw err;
+      const msg = (err as Error).message;
+      if (msg === "Strategy not found" || msg.startsWith("Cannot go live:")) throw err;
       // DB connection error — fall through to Map
     }
     const existing = this.strategies.get(id);
@@ -1600,6 +1752,22 @@ export class MemStorage implements IStorage {
               : s.positionSizingPlan.lockedAt,
           } as any)
         : null,
+      expectedPerformance: s.expectedPerformance
+        ? ({
+            ...s.expectedPerformance,
+            snappedAt: s.expectedPerformance.snappedAt instanceof Date
+              ? s.expectedPerformance.snappedAt.toISOString()
+              : s.expectedPerformance.snappedAt,
+          } as any)
+        : null,
+      quitRule: s.quitRule
+        ? ({
+            ...s.quitRule,
+            lockedAt: s.quitRule.lockedAt instanceof Date
+              ? s.quitRule.lockedAt.toISOString()
+              : s.quitRule.lockedAt,
+          } as any)
+        : null,
       walkForwardConfig: s.walkForwardConfig
         ? ({
             ...s.walkForwardConfig,
@@ -1652,6 +1820,18 @@ export class MemStorage implements IStorage {
             ...(row.positionSizingPlan as any),
             lockedAt: new Date((row.positionSizingPlan as any).lockedAt),
           } as PositionSizingPlan)
+        : undefined,
+      expectedPerformance: row.expectedPerformance
+        ? ({
+            ...(row.expectedPerformance as any),
+            snappedAt: new Date((row.expectedPerformance as any).snappedAt),
+          } as ExpectedPerformance)
+        : undefined,
+      quitRule: row.quitRule
+        ? ({
+            ...(row.quitRule as any),
+            lockedAt: new Date((row.quitRule as any).lockedAt),
+          } as QuitRule)
         : undefined,
       walkForwardConfig: row.walkForwardConfig
         ? ({

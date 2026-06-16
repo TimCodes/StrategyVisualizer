@@ -102,8 +102,12 @@ export function registerStrategyRoutes(app: Express) {
       const strategy = await storage.recordGate(req.params.id, parsed.data);
       res.json(strategy);
     } catch (error) {
-      if ((error as Error).message === "Strategy not found") {
-        return res.status(404).json({ error: "Strategy not found" });
+      const msg = (error as Error).message;
+      if (msg === "Strategy not found") {
+        return res.status(404).json({ error: msg });
+      }
+      if (msg.startsWith("Cannot go live:")) {
+        return res.status(409).json({ error: msg });
       }
       res.status(500).json({ error: "Failed to record gate transition" });
     }

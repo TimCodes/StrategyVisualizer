@@ -247,6 +247,96 @@ describe("position sizing plan (lock semantics)", () => {
   });
 });
 
+describe("quit rule + go-live guard (Davey Ch 24)", () => {
+  async function makeStrategy(stage: "idea" | "diversification_sizing" | "live" = "idea") {
+    return storage.createStrategy({
+      name: "Q", description: "d", type: "momentum", status: "inactive",
+      performance: 0, sharpeRatio: 0, maxDrawdown: 0, winRate: 0, totalTrades: 0,
+      stage, gateStatus: "in_progress", gateHistory: [],
+      refinementHistory: [], incubationObservations: [],
+    });
+  }
+  const quitRule = { type: "max_drawdown_usd" as const, value: 5000 };
+
+  it("locks a quit rule once with a timestamp", async () => {
+    const s = await makeStrategy();
+    const updated = await storage.setQuitRule(s.id, quitRule);
+    expect(updated.quitRule?.value).toBe(5000);
+    expect(updated.quitRule?.lockedAt).toBeInstanceOf(Date);
+  });
+
+  it("rejects locking a quit rule twice", async () => {
+    const s = await makeStrategy();
+    await storage.setQuitRule(s.id, quitRule);
+    await expect(storage.setQuitRule(s.id, quitRule)).rejects.toThrow("Quit rule already locked");
+  });
+
+  it("blocks the live transition without a sizing plan", async () => {
+    const s = await makeStrategy("diversification_sizing");
+    await expect(storage.recordGate(s.id, { result: "passed" })).rejects.toThrow(
+      "Cannot go live: lock a position sizing plan first"
+    );
+  });
+
+  it("blocks the live transition without a quit rule (plan present)", async () => {
+    const s = await makeStrategy("diversification_sizing");
+    await storage.setPositionSizingPlan(s.id, {
+      model: "fixed_fractional", f: 0.15, largestLoss: 400, startingCapital: 10000,
+      constraints: { maxDrawdownPct: 25, maxRiskOfRuin: 0.1 },
+    });
+    await expect(storage.recordGate(s.id, { result: "passed" })).rejects.toThrow(
+      "Cannot go live: lock a quit rule first"
+    );
+  });
+
+  it("allows the live transition once plan and quit rule are locked", async () => {
+    const s = await makeStrategy("diversification_sizing");
+    await storage.setPositionSizingPlan(s.id, {
+      model: "fixed_fractional", f: 0.15, largestLoss: 400, startingCapital: 10000,
+      constraints: { maxDrawdownPct: 25, maxRiskOfRuin: 0.1 },
+    });
+    await storage.setQuitRule(s.id, quitRule);
+    const updated = await storage.recordGate(s.id, { result: "passed" });
+    expect(updated.stage).toBe("live");
+  });
+});
+
+describe("expected performance baseline", () => {
+  it("freezes once incubation begins", async () => {
+    const s = await storage.createStrategy({
+      name: "E", description: "d", type: "momentum", status: "inactive",
+      performance: 0, sharpeRatio: 0, maxDrawdown: 0, winRate: 0, totalTrades: 0,
+      stage: "incubation", gateStatus: "in_progress", gateHistory: [],
+      refinementHistory: [], incubationObservations: [],
+    });
+    await expect(
+      storage.setExpectedPerformance(s.id, {
+        avgTradePnL: 100, tradesPerYear: 50, expectedAnnualReturnPct: 20,
+        expectedMaxDrawdownPct: 10, bands: [],
+      })
+    ).rejects.toThrow("frozen once incubation begins");
+  });
+});
+
+describe("strategy reviews", () => {
+  it("creates and lists reviews most-recent first", async () => {
+    const s = await storage.createStrategy({
+      name: "R", description: "d", type: "momentum", status: "inactive",
+      performance: 0, sharpeRatio: 0, maxDrawdown: 0, winRate: 0, totalTrades: 0,
+      stage: "live", gateStatus: "passed", gateHistory: [],
+      refinementHistory: [], incubationObservations: [],
+    });
+    await storage.createStrategyReview({
+      strategyId: s.id, periodLabel: "Week 4", surprised: "no",
+      resultsInLineWithExpectations: "yes", fillsComparable: "yes",
+      reasonToStop: "no", reasonToChangeSizing: "no",
+    });
+    const reviews = await storage.getStrategyReviews(s.id);
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0].periodLabel).toBe("Week 4");
+  });
+});
+
 describe("strategies (memory path regression)", () => {
   it("gate transitions advance one stage and append history", async () => {
     const created = await storage.createStrategy({
