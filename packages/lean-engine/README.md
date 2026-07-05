@@ -171,3 +171,27 @@ host daemon (several GB — be patient once).
 - **Pinned CLI version won't install** — lean-cli releases are sequential
   `1.0.N` versions on PyPI; bump `LEAN_CLI_VERSION` in the `Dockerfile` (and
   the tags listed above) to a current release.
+
+## Data pipeline (free Tier 1-3 daily data)
+
+`npm run data:refresh` (or `python pipeline/download_data.py [SYMBOLS...]`) downloads
+and converts free daily data into the LEAN workspace (`lean-workspace/data`):
+
+- **Tier 1 — 29 US ETFs** (broad market, bonds, commodities, all 11 sector SPDRs)
+  from Yahoo Finance, written as LEAN equity zips with map files and
+  dividend factor files. Yahoo prices are split-adjusted at source, so factor
+  files carry dividends only (documented in `data/PROVENANCE.md`).
+- **Tier 2 — VIX** full history from CBOE, written both as a LEAN index zip
+  (`add_index("VIX")` — bars arrive at 16:15 ET) and as a raw CSV under
+  `data/alternative/vix/` for custom-data use.
+- **Tier 3 — BTC/ETH daily** (Yahoo), written as `Market.COINBASE` crypto zips
+  (`add_crypto("BTCUSD", Resolution.DAILY, Market.COINBASE)`).
+
+Every refresh rewrites `data/PROVENANCE.md` with source, adjustment method,
+row counts, and coverage dates per symbol (Davey Ch 11 data discipline).
+All three formats are validated against the real engine (see the DataCheck /
+CryptoCheck projects in the workspace).
+
+Requires `pip install yfinance requests`. Not for single-stock cross-sectional
+research: the ETF set is not a survivorship-safe universe. Intraday and
+options strategies still need paid data.

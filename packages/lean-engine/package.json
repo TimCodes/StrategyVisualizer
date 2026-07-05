@@ -11,6 +11,7 @@
     "lean": "powershell -NoProfile -ExecutionPolicy Bypass -File ./bin/lean-docker.ps1",
     "lean:sh": "./bin/lean-docker.sh",
     "backtest": "powershell -NoProfile -ExecutionPolicy Bypass -File ./bin/lean-docker.ps1 backtest",
-    "backtest:sh": "./bin/lean-docker.sh backtest"
+    "backtest:sh": "./bin/lean-docker.sh backtest",
+    "data:refresh": "python pipeline/download_data.py"
   }
 }
