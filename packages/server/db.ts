@@ -1,6 +1,8 @@
 import * as schema from "@shared/schema";
 
-type DrizzleDB = ReturnType<typeof import("drizzle-orm/neon-serverless").drizzle<typeof schema>>;
+// Both drivers expose the same drizzle query API; we type against the
+// node-postgres variant and cast the Neon one to it.
+type DrizzleDB = ReturnType<typeof import("drizzle-orm/node-postgres").drizzle<typeof schema>>;
 
 let db: DrizzleDB | null = null;
 let initPromise: Promise<DrizzleDB | null> | null = null;
@@ -21,12 +23,20 @@ async function initializeDb(): Promise<DrizzleDB | null> {
   loggedNoDatabaseUrl = false;
 
   try {
-    const { Pool } = await import("@neondatabase/serverless");
-    const { drizzle } = await import("drizzle-orm/neon-serverless");
-    
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-    db = drizzle(pool, { schema });
-    console.log("Database connection established");
+    const url = process.env.DATABASE_URL;
+    if (/neon\.tech/.test(url)) {
+      // Neon serverless (Replit / cloud): WebSocket-based driver
+      const { Pool } = await import("@neondatabase/serverless");
+      const { drizzle } = await import("drizzle-orm/neon-serverless");
+      db = drizzle(new Pool({ connectionString: url }), { schema }) as unknown as DrizzleDB;
+      console.log("Database connection established (neon-serverless)");
+    } else {
+      // Plain Postgres (local Docker, self-hosted): TCP driver
+      const pg = await import("pg");
+      const { drizzle } = await import("drizzle-orm/node-postgres");
+      db = drizzle(new pg.default.Pool({ connectionString: url }), { schema });
+      console.log("Database connection established (node-postgres)");
+    }
     failedAtTime = 0;
     return db;
   } catch (error) {
