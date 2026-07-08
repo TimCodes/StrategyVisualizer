@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { setupAuth, setupRateLimits } from "./lib/auth";
 
 const app = express();
 // Backtest payloads (equity curves + trade lists) routinely exceed the
@@ -39,6 +40,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Auth and rate limits must be mounted BEFORE the API routes
+  await setupAuth(app);
+  setupRateLimits(app);
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

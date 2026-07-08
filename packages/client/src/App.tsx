@@ -16,7 +16,8 @@ import Arena from "@/pages/Arena";
 import Settings from "@/pages/Settings";
 import EditorPage from "@/pages/Editor";
 import NotFound from "@/pages/not-found";
-import { AlertTriangle, FlaskConical, Info } from "lucide-react";
+import { AlertTriangle, FlaskConical, Info, Lock } from "lucide-react";
+import { useState } from "react";
 
 function SimulatedModeBanner() {
   const { data } = useQuery<{ liveTradingEnabled: boolean; backtestEngine: string }>({
@@ -98,22 +99,83 @@ function Router() {
   );
 }
 
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { data, isLoading, refetch } = useQuery<{ authEnabled: boolean; authenticated: boolean }>({
+    queryKey: ["/api/auth/me"],
+  });
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  if (isLoading) return null;
+  if (!data || !data.authEnabled || data.authenticated) return <>{children}</>;
+
+  const login = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+      credentials: "include",
+    });
+    setSubmitting(false);
+    if (res.ok) {
+      refetch();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error ?? "Login failed");
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+      <form onSubmit={login} className="w-80 space-y-4 rounded-lg border border-border bg-surface p-6">
+        <div className="flex items-center gap-2">
+          <Lock className="h-5 w-5 text-text-secondary" />
+          <h1 className="text-lg font-semibold">Praxis</h1>
+        </div>
+        <p className="text-sm text-text-secondary">Authentication is enabled. Enter the password to continue.</p>
+        <input
+          type="password"
+          autoFocus
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password"
+          className="w-full rounded border border-border bg-surface-raised px-3 py-2 text-sm outline-none focus:border-primary"
+        />
+        {error && <p className="text-sm text-red-400">{error}</p>}
+        <button
+          type="submit"
+          disabled={submitting || password.length === 0}
+          className="w-full rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+        >
+          {submitting ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <SocketProvider>
-        <TooltipProvider>
-          <div className="flex min-h-screen bg-background text-foreground">
-            <Sidebar />
-            <div className="flex flex-col flex-1 min-w-0">
-              <SimulatedModeBanner />
-              <TrialCounterBanner />
-              <Router />
+      <AuthGate>
+        <SocketProvider>
+          <TooltipProvider>
+            <div className="flex min-h-screen bg-background text-foreground">
+              <Sidebar />
+              <div className="flex flex-col flex-1 min-w-0">
+                <SimulatedModeBanner />
+                <TrialCounterBanner />
+                <Router />
+              </div>
             </div>
-          </div>
-          <Toaster />
-        </TooltipProvider>
-      </SocketProvider>
+            <Toaster />
+          </TooltipProvider>
+        </SocketProvider>
+      </AuthGate>
     </QueryClientProvider>
   );
 }

@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { getKrakenService } from "../services/exchanges/kraken";
 import { isLiveTradingEnabled, LiveTradingDisabledError } from "../lib/liveTrading";
+import { storage } from "../storage";
 
 export function registerKrakenRoutes(app: Express) {
   app.get("/api/kraken/ticker", async (req: Request, res: Response) => {
@@ -107,9 +108,24 @@ export function registerKrakenRoutes(app: Express) {
   });
 
   app.post("/api/kraken/order", async (req: Request, res: Response) => {
+    const { pair, type, ordertype, volume, price } = req.body ?? {};
+    // Every order ATTEMPT is audited — blocked, submitted, or errored.
+    const audit = (status: "blocked" | "submitted" | "error", detail: string) =>
+      storage.recordOrderAudit({
+        connector: "kraken",
+        symbol: String(pair ?? "?"),
+        side: String(type ?? "?"),
+        quantity: Number(volume) || null,
+        price: Number(price) || null,
+        orderType: String(ordertype ?? "?"),
+        status,
+        detail,
+        requestBody: { pair, type, ordertype, volume, price },
+      }).catch(() => {});
     try {
       if (!isLiveTradingEnabled()) {
         console.warn("[Kraken] Order placement blocked: LIVE_TRADING_ENABLED is not \"true\".");
+        await audit("blocked", "LIVE_TRADING_ENABLED is not true");
         return res.status(403).json({
           error: "Live trading is disabled. Backtests are simulated; live orders are blocked.",
           liveTradingEnabled: false,
@@ -119,13 +135,11 @@ export function registerKrakenRoutes(app: Express) {
       const apiSecret = process.env.KRAKEN_API_SECRET;
 
       if (!apiKey || !apiSecret) {
-        return res.status(401).json({ 
+        return res.status(401).json({
           error: "Kraken API credentials not configured",
           message: "Please add KRAKEN_API_KEY and KRAKEN_API_SECRET to use this feature"
         });
       }
-
-      const { pair, type, ordertype, volume, price } = req.body;
 
       if (!pair || !type || !ordertype || !volume) {
         return res.status(400).json({ error: "Missing required order parameters" });
@@ -133,14 +147,17 @@ export function registerKrakenRoutes(app: Express) {
 
       const kraken = getKrakenService(apiKey, apiSecret);
       const result = await kraken.placeOrder({ pair, type, ordertype, volume, price });
+      await audit("submitted", "order sent to Kraken");
       res.json(result);
     } catch (error) {
       if (error instanceof LiveTradingDisabledError) {
+        await audit("blocked", error.message);
         return res.status(403).json({
           error: error.message,
           liveTradingEnabled: false,
         });
       }
+      await audit("error", (error as Error).message);
       console.error("Kraken order error:", error);
       res.status(500).json({ error: "Failed to place Kraken order" });
     }

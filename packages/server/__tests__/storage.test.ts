@@ -289,15 +289,107 @@ describe("quit rule + go-live guard (Davey Ch 24)", () => {
     );
   });
 
-  it("allows the live transition once plan and quit rule are locked", async () => {
-    const s = await makeStrategy("diversification_sizing");
-    await storage.setPositionSizingPlan(s.id, {
+  // Full pre-live checklist (Phase 8): plan + quit rule + auth + passed
+  // incubation (forward data) + passed diversification (live_engine)
+  async function fullyPrepare(id: string) {
+    await storage.setPositionSizingPlan(id, {
       model: "fixed_fractional", f: 0.15, largestLoss: 400, startingCapital: 10000,
       constraints: { maxDrawdownPct: 25, maxRiskOfRuin: 0.1 },
     });
-    await storage.setQuitRule(s.id, quitRule);
-    const updated = await storage.recordGate(s.id, { result: "passed" });
-    expect(updated.stage).toBe("live");
+    await storage.setQuitRule(id, quitRule);
+    await storage.recordGateResult({
+      strategyId: id, gate: "incubation", verdict: "pass",
+      metrics: null, dataSource: "paper", reason: "forward test ok",
+    });
+    await storage.recordGateResult({
+      strategyId: id, gate: "diversification", verdict: "pass",
+      metrics: null, dataSource: "live_engine", reason: "diversifies",
+    });
+  }
+
+  it("blocks the live transition while auth is disabled", async () => {
+    delete process.env.AUTH_ENABLED;
+    const s = await makeStrategy("diversification_sizing");
+    await fullyPrepare(s.id);
+    await expect(storage.recordGate(s.id, { result: "passed" })).rejects.toThrow(
+      "Cannot go live: enable authentication first"
+    );
+  });
+
+  it("blocks the live transition without a passed incubation gate result", async () => {
+    process.env.AUTH_ENABLED = "true";
+    try {
+      const s = await makeStrategy("diversification_sizing");
+      await storage.setPositionSizingPlan(s.id, {
+        model: "fixed_fractional", f: 0.15, largestLoss: 400, startingCapital: 10000,
+        constraints: { maxDrawdownPct: 25, maxRiskOfRuin: 0.1 },
+      });
+      await storage.setQuitRule(s.id, quitRule);
+      await storage.recordGateResult({
+        strategyId: s.id, gate: "diversification", verdict: "pass",
+        metrics: null, dataSource: "live_engine", reason: "ok",
+      });
+      await expect(storage.recordGate(s.id, { result: "passed" })).rejects.toThrow(
+        /incubation gate result/
+      );
+    } finally {
+      delete process.env.AUTH_ENABLED;
+    }
+  });
+
+  it("blocks when the incubation pass rests on self-reported observations", async () => {
+    process.env.AUTH_ENABLED = "true";
+    try {
+      const s = await makeStrategy("diversification_sizing");
+      await fullyPrepare(s.id);
+      // a newer self-reported pass supersedes the paper one (distinct
+      // timestamp needed — same-ms ties sort unstably)
+      await new Promise((r) => setTimeout(r, 10));
+      await storage.recordGateResult({
+        strategyId: s.id, gate: "incubation", verdict: "pass",
+        metrics: null, dataSource: "self_reported", reason: "manual entries",
+      });
+      await expect(storage.recordGate(s.id, { result: "passed" })).rejects.toThrow(
+        /live or paper forward data/
+      );
+    } finally {
+      delete process.env.AUTH_ENABLED;
+    }
+  });
+
+  it("allows the live transition once the full checklist is satisfied", async () => {
+    process.env.AUTH_ENABLED = "true";
+    try {
+      const s = await makeStrategy("diversification_sizing");
+      await fullyPrepare(s.id);
+      const updated = await storage.recordGate(s.id, { result: "passed" });
+      expect(updated.stage).toBe("live");
+    } finally {
+      delete process.env.AUTH_ENABLED;
+    }
+  });
+});
+
+describe("order audit log", () => {
+  it("records attempts and returns them most recent first", async () => {
+    await storage.recordOrderAudit({
+      connector: "kraken", symbol: "BTC/USD", side: "buy",
+      quantity: 0.1, price: 50000, orderType: "limit",
+      status: "blocked", detail: "LIVE_TRADING_ENABLED is not true",
+      requestBody: { pair: "BTC/USD" },
+    });
+    await storage.recordOrderAudit({
+      connector: "ibkr", symbol: "SPY", side: "BUY",
+      quantity: 10, price: null, orderType: "MKT",
+      status: "error", detail: "credentials rejected", requestBody: {},
+    });
+    const audits = await storage.getOrderAudits();
+    expect(audits.length).toBeGreaterThanOrEqual(2);
+    const kraken = audits.find((a) => a.connector === "kraken");
+    const ibkr = audits.find((a) => a.connector === "ibkr");
+    expect(kraken?.status).toBe("blocked");
+    expect(ibkr?.status).toBe("error");
+    expect(audits[0].at).toBeInstanceOf(Date);
   });
 });
 

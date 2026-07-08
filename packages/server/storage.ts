@@ -44,6 +44,9 @@ import {
   StrategyReview,
   InsertStrategyReview,
   strategyReviewsTable,
+  OrderAudit,
+  InsertOrderAudit,
+  orderAuditTable,
   WalkForwardRun,
   InsertWalkForwardRun,
   walkForwardRunsTable,
@@ -53,6 +56,7 @@ import {
   chatMessagesTable,
 } from "@shared/schema";
 import { getDb } from "./db";
+import { isAuthEnabled } from "./lib/auth";
 
 export interface IStorage {
   getStrategies(): Promise<Strategy[]>;
@@ -68,6 +72,8 @@ export interface IStorage {
   setQuitRule(id: string, rule: SetQuitRuleBody): Promise<Strategy>;
   createStrategyReview(data: InsertStrategyReview): Promise<StrategyReview>;
   getStrategyReviews(strategyId: string): Promise<StrategyReview[]>;
+  recordOrderAudit(data: InsertOrderAudit): Promise<OrderAudit>;
+  getOrderAudits(limit?: number): Promise<OrderAudit[]>;
 
   getTrades(): Promise<Trade[]>;
   getTradesByStrategy(strategyId: string): Promise<Trade[]>;
@@ -133,6 +139,7 @@ export class MemStorage implements IStorage {
   private gateResults: Map<string, GateResult>;
   private wfRuns: Map<string, WalkForwardRun>;
   private strategyReviews: StrategyReview[];
+  private orderAudits: OrderAudit[];
 
   constructor() {
     this.strategies = new Map();
@@ -147,6 +154,7 @@ export class MemStorage implements IStorage {
     this.gateResults = new Map();
     this.wfRuns = new Map();
     this.strategyReviews = [];
+    this.orderAudits = [];
     this.memSettings = {
       id: "default",
       refreshInterval: "30s",
@@ -639,6 +647,61 @@ export class MemStorage implements IStorage {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
+  async recordOrderAudit(data: InsertOrderAudit): Promise<OrderAudit> {
+    const audit: OrderAudit = {
+      id: randomUUID(),
+      connector: data.connector,
+      symbol: data.symbol,
+      side: data.side,
+      quantity: data.quantity ?? null,
+      price: data.price ?? null,
+      orderType: data.orderType ?? null,
+      status: data.status,
+      detail: data.detail ?? null,
+      requestBody: data.requestBody ?? null,
+      at: new Date(),
+    };
+    this.orderAudits.push(audit);
+    try {
+      const db = await getDb();
+      if (db) {
+        const [row] = await db.insert(orderAuditTable).values({
+          id: audit.id,
+          connector: audit.connector,
+          symbol: audit.symbol,
+          side: audit.side,
+          quantity: audit.quantity,
+          price: audit.price,
+          orderType: audit.orderType,
+          status: audit.status,
+          detail: audit.detail,
+          requestBody: audit.requestBody,
+          at: audit.at,
+        }).returning();
+        if (row) return row;
+      }
+    } catch {
+      // in-memory copy already pushed above
+    }
+    return audit;
+  }
+
+  async getOrderAudits(limit = 100): Promise<OrderAudit[]> {
+    try {
+      const db = await getDb();
+      if (db) {
+        return await db.select().from(orderAuditTable)
+          .orderBy(desc(orderAuditTable.at))
+          .limit(limit);
+      }
+    } catch {
+      // fall through to in-memory
+    }
+    return [...this.orderAudits]
+      .sort((a, b) => b.at.getTime() - a.at.getTime())
+      .slice(0, limit);
+  }
+
   private mapDbReview(row: typeof strategyReviewsTable.$inferSelect): StrategyReview {
     return {
       id: row.id,
@@ -688,10 +751,54 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
+  /**
+   * Phase 8 pre-live checklist (Davey Ch 20/24). Enforced on ANY path that
+   * would advance a strategy into the live stage — the manual gate endpoint
+   * and gate auto-advance both funnel through recordGate.
+   */
+  private async assertLiveChecklist(s: Strategy): Promise<void> {
+    if (!s.positionSizingPlan) {
+      throw new Error("Cannot go live: lock a position sizing plan first");
+    }
+    if (!s.quitRule) {
+      throw new Error("Cannot go live: lock a quit rule first");
+    }
+    if (!isAuthEnabled()) {
+      throw new Error("Cannot go live: enable authentication first (AUTH_ENABLED=true)");
+    }
+    const results = await this.getGateResults(s.id);
+    const latest = (gate: string) => results.find((r) => r.gate === gate);
+
+    const incubation = latest("incubation");
+    if (
+      incubation?.verdict !== "pass" ||
+      !["live", "paper"].includes(incubation.dataSource ?? "")
+    ) {
+      throw new Error(
+        "Cannot go live: latest incubation gate result must be a pass on live or paper forward data"
+      );
+    }
+    const diversification = latest("diversification");
+    if (diversification?.verdict !== "pass" || diversification.dataSource !== "live_engine") {
+      throw new Error(
+        "Cannot go live: latest diversification gate result must be a live_engine pass"
+      );
+    }
+  }
+
   async recordGate(
     id: string,
     params: { result: "passed" | "failed" | "discarded"; note?: string }
   ): Promise<Strategy> {
+    // Run the full pre-live checklist before any transition into live.
+    if (params.result === "passed") {
+      const current = await this.getStrategyById(id);
+      if (!current) throw new Error("Strategy not found");
+      if (nextStage(current.stage) === "live") {
+        await this.assertLiveChecklist(current);
+      }
+    }
+
     const applyTransition = (s: Strategy): Strategy => {
       const entry: GateHistoryEntry = { stage: s.stage, result: params.result, note: params.note, at: new Date() };
       const gateHistory = [...s.gateHistory, entry];

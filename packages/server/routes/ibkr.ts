@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { getIBKRService, IBKRService } from "../services/exchanges/ibkr";
 import { isLiveTradingEnabled, LiveTradingDisabledError } from "../lib/liveTrading";
+import { storage } from "../storage";
 
 function getCredentials(): { accessToken: string; accountId: string } | null {
   const accessToken = process.env.IBKR_ACCESS_TOKEN;
@@ -135,16 +136,30 @@ export function registerIBKRRoutes(app: Express) {
   });
 
   app.post("/api/ibkr/order", async (req: Request, res: Response) => {
+    const { symbol, action, orderType, quantity, price, tif } = req.body ?? {};
+    // Every order ATTEMPT is audited — blocked, submitted, or errored.
+    const audit = (status: "blocked" | "submitted" | "error", detail: string) =>
+      storage.recordOrderAudit({
+        connector: "ibkr",
+        symbol: String(symbol ?? "?"),
+        side: String(action ?? "?"),
+        quantity: Number(quantity) || null,
+        price: Number(price) || null,
+        orderType: String(orderType ?? "?"),
+        status,
+        detail,
+        requestBody: { symbol, action, orderType, quantity, price, tif },
+      }).catch(() => {});
     try {
       if (!isLiveTradingEnabled()) {
         console.warn("[IBKR] Order placement blocked: LIVE_TRADING_ENABLED is not \"true\".");
+        await audit("blocked", "LIVE_TRADING_ENABLED is not true");
         return res.status(403).json({
           error: "Live trading is disabled. Backtests are simulated; live orders are blocked.",
           liveTradingEnabled: false,
         });
       }
       if (!requireCredentials(res)) return;
-      const { symbol, action, orderType, quantity, price, tif } = req.body;
 
       if (!symbol || !action || !orderType || !quantity) {
         return res.status(400).json({ error: "Missing required fields: symbol, action, orderType, quantity" });
@@ -162,14 +177,17 @@ export function registerIBKRRoutes(app: Express) {
       const creds = getCredentials()!;
       const ibkr = getIBKRService(creds.accessToken, creds.accountId);
       const result = await ibkr.placeOrder({ symbol, action, orderType, quantity, price, tif });
+      await audit("submitted", "order sent to IBKR");
       res.json(result);
     } catch (error) {
       if (error instanceof LiveTradingDisabledError) {
+        await audit("blocked", error.message);
         return res.status(403).json({
           error: error.message,
           liveTradingEnabled: false,
         });
       }
+      await audit("error", (error as Error).message);
       console.error("IBKR place order error:", error);
       res.status(500).json({ error: "Failed to place IBKR order", details: String(error) });
     }

@@ -692,6 +692,31 @@ export const orderBookSchema = z.object({
 export type OrderBookEntry = z.infer<typeof orderBookEntrySchema>;
 export type OrderBook = z.infer<typeof orderBookSchema>;
 
+// ── Order audit log (Phase 8) ────────────────────────────────
+// Every broker order ATTEMPT is recorded — including ones blocked by the
+// live-trading guard and ones that errored. The audit trail exists so a
+// human can reconstruct exactly what the system tried to do and why.
+export const orderAuditTable = pgTable("order_audit", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  connector: text("connector").notNull(), // "ibkr" | "kraken"
+  symbol: text("symbol").notNull(),
+  side: text("side").notNull(),
+  quantity: real("quantity"),
+  price: real("price"),
+  orderType: text("order_type"),
+  status: text("status").notNull(), // "blocked" | "submitted" | "error"
+  detail: text("detail"),
+  requestBody: jsonb("request_body"),
+  at: timestamp("at").notNull().defaultNow(),
+});
+
+export const insertOrderAuditSchema = createInsertSchema(orderAuditTable).omit({
+  id: true,
+  at: true,
+});
+export type OrderAudit = typeof orderAuditTable.$inferSelect;
+export type InsertOrderAudit = z.infer<typeof insertOrderAuditSchema>;
+
 export const gateResultsTable = pgTable("gate_results", {
   id: uuid("id").primaryKey().defaultRandom(),
   strategyId: text("strategy_id").notNull(),

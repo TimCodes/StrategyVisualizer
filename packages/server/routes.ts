@@ -16,6 +16,8 @@ import { registerMonitoringRoutes } from "./routes/monitoring";
 import { initializeWebSocket } from "./ws";
 import { isLiveTradingEnabled } from "./lib/liveTrading";
 import { isLeanAvailable } from "./services/lean-runner";
+import { isAuthEnabled } from "./lib/auth";
+import { storage } from "./storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   registerStrategyRoutes(app);
@@ -36,7 +38,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({
       liveTradingEnabled: isLiveTradingEnabled(),
       backtestEngine: isLeanAvailable() ? "lean" : "simulated",
+      authEnabled: isAuthEnabled(),
     });
+  });
+
+  // Order audit trail — every broker order attempt (blocked/submitted/error)
+  app.get("/api/orders/audit", async (req: Request, res: Response) => {
+    try {
+      const limit = Math.min(parseInt(String(req.query.limit ?? "100"), 10) || 100, 500);
+      res.json(await storage.getOrderAudits(limit));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   const httpServer = createServer(app);
