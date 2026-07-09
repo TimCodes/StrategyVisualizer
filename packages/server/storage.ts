@@ -105,11 +105,12 @@ export interface IStorage {
   createLeanBacktest(data: InsertLeanBacktest): Promise<LeanBacktest>;
   updateLeanBacktest(id: string, data: Partial<InsertLeanBacktest>): Promise<LeanBacktest>;
   getLeanBacktestsByProject(projectId: string): Promise<LeanBacktest[]>;
+  getLeanBacktestById(id: string): Promise<LeanBacktest | null>;
 
   recordTrial(data: InsertTrial): Promise<Trial>;
   getTrialCount(strategyId?: string): Promise<{
     total: number;
-    byType: { generation: number; refinement: number; optimization: number };
+    byType: { generation: number; refinement: number; optimization: number; backtest: number };
   }>;
   getTrials(limit?: number): Promise<Trial[]>;
 
@@ -1310,10 +1311,13 @@ export class MemStorage implements IStorage {
   }
 
   async updateLeanProjectCode(name: string, code: string): Promise<LeanProject> {
+    // A missing memory copy is not an error while a database exists —
+    // after a restart the project lives only in Postgres.
     const existing = this.leanProjects.get(name);
-    if (!existing) throw new Error("Project not found");
-    const updated: LeanProject = { ...existing, code, updatedAt: new Date() };
-    this.leanProjects.set(name, updated);
+    const updatedMem: LeanProject | undefined = existing
+      ? { ...existing, code, updatedAt: new Date() }
+      : undefined;
+    if (updatedMem) this.leanProjects.set(name, updatedMem);
     try {
       const db = await getDb();
       if (db) {
@@ -1324,9 +1328,10 @@ export class MemStorage implements IStorage {
         if (rows[0]) return this.mapDbLeanProject(rows[0]);
       }
     } catch {
-      // in-memory copy already updated above
+      // fall through to in-memory result
     }
-    return updated;
+    if (!updatedMem) throw new Error("Project not found");
+    return updatedMem;
   }
 
   async updateLeanProjectLastBacktest(name: string, backtestId: string): Promise<void> {
@@ -1351,16 +1356,20 @@ export class MemStorage implements IStorage {
   }
 
   async deleteLeanProject(name: string): Promise<void> {
-    if (!this.leanProjects.has(name)) throw new Error("Project not found");
-    this.leanProjects.delete(name);
+    const inMemory = this.leanProjects.delete(name);
+    let inDb = false;
     try {
       const db = await getDb();
       if (db) {
-        await db.delete(leanProjectsTable).where(eq(leanProjectsTable.name, name));
+        const rows = await db.delete(leanProjectsTable)
+          .where(eq(leanProjectsTable.name, name))
+          .returning();
+        inDb = rows.length > 0;
       }
     } catch {
-      // in-memory copy already deleted above
+      // in-memory deletion already attempted above
     }
+    if (!inMemory && !inDb) throw new Error("Project not found");
   }
 
   async createLeanBacktest(data: InsertLeanBacktest): Promise<LeanBacktest> {
@@ -1373,7 +1382,10 @@ export class MemStorage implements IStorage {
     try {
       const db = await getDb();
       if (db) {
+        // The id MUST match the in-memory copy — a db-generated uuid here
+        // orphans the memory record and breaks later updates by id.
         const rows = await db.insert(leanBacktestsTable).values({
+          id: backtest.id,
           projectId: data.projectId,
           status: data.status,
           totalReturn: data.totalReturn,
@@ -1382,8 +1394,10 @@ export class MemStorage implements IStorage {
           winRate: data.winRate,
           totalTrades: data.totalTrades,
           equityCurve: data.equityCurve,
+          trades: data.trades ?? [],
           rawResults: data.rawResults,
           errorLog: data.errorLog ?? null,
+          dataSource: data.dataSource ?? "simulated",
         }).returning();
         return this.mapDbLeanBacktest(rows[0]);
       }
@@ -1394,10 +1408,13 @@ export class MemStorage implements IStorage {
   }
 
   async updateLeanBacktest(id: string, data: Partial<InsertLeanBacktest>): Promise<LeanBacktest> {
+    // Update memory when present, but a missing memory copy is not an
+    // error while a database exists — try the db before giving up.
     const existing = this.leanBacktests.get(id);
-    if (!existing) throw new Error("Backtest not found");
-    const updated: LeanBacktest = { ...existing, ...data };
-    this.leanBacktests.set(id, updated);
+    const updatedMem: LeanBacktest | undefined = existing
+      ? { ...existing, ...data }
+      : undefined;
+    if (updatedMem) this.leanBacktests.set(id, updatedMem);
     try {
       const db = await getDb();
       if (db) {
@@ -1408,9 +1425,10 @@ export class MemStorage implements IStorage {
         if (rows[0]) return this.mapDbLeanBacktest(rows[0]);
       }
     } catch {
-      // in-memory copy already updated above
+      // fall through to in-memory result
     }
-    return updated;
+    if (!updatedMem) throw new Error("Backtest not found");
+    return updatedMem;
   }
 
   async getLeanBacktestsByProject(projectId: string): Promise<LeanBacktest[]> {
@@ -1428,6 +1446,20 @@ export class MemStorage implements IStorage {
     return Array.from(this.leanBacktests.values())
       .filter((b) => b.projectId === projectId)
       .sort((a, b) => b.runAt.getTime() - a.runAt.getTime());
+  }
+
+  async getLeanBacktestById(id: string): Promise<LeanBacktest | null> {
+    try {
+      const db = await getDb();
+      if (db) {
+        const [row] = await db.select().from(leanBacktestsTable)
+          .where(eq(leanBacktestsTable.id, id));
+        return row ? this.mapDbLeanBacktest(row) : null;
+      }
+    } catch {
+      // fall through to in-memory
+    }
+    return this.leanBacktests.get(id) ?? null;
   }
 
   private mapDbLeanProject(row: typeof leanProjectsTable.$inferSelect): LeanProject {
@@ -1492,9 +1524,9 @@ export class MemStorage implements IStorage {
 
   async getTrialCount(strategyId?: string): Promise<{
     total: number;
-    byType: { generation: number; refinement: number; optimization: number };
+    byType: { generation: number; refinement: number; optimization: number; backtest: number };
   }> {
-    const byType = { generation: 0, refinement: 0, optimization: 0 };
+    const byType = { generation: 0, refinement: 0, optimization: 0, backtest: 0 };
     let source: { trialType: string }[] = strategyId
       ? this.trials.filter((t) => t.strategyId === strategyId)
       : this.trials;
@@ -1512,6 +1544,7 @@ export class MemStorage implements IStorage {
       if (r.trialType === "generation") byType.generation++;
       else if (r.trialType === "refinement") byType.refinement++;
       else if (r.trialType === "optimization") byType.optimization++;
+      else if (r.trialType === "backtest") byType.backtest++;
     }
     return { total: source.length, byType };
   }
@@ -1843,6 +1876,7 @@ export class MemStorage implements IStorage {
       incubationObservations: (s.incubationObservations ?? []) as any,
       edge: s.edge ?? null,
       edgeAssessment: s.edgeAssessment ?? null,
+      leanProjectName: s.leanProjectName ?? null,
       goals: s.goals
         ? ({
             ...s.goals,
@@ -1916,6 +1950,7 @@ export class MemStorage implements IStorage {
       incubationObservations: ((row.incubationObservations as any[]) ?? []) as IncubationObservation[],
       edge: row.edge ?? undefined,
       edgeAssessment: (row.edgeAssessment as Strategy["edgeAssessment"]) ?? undefined,
+      leanProjectName: row.leanProjectName ?? undefined,
       goals: row.goals
         ? ({
             ...(row.goals as any),

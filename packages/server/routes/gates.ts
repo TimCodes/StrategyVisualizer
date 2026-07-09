@@ -70,6 +70,61 @@ const incubationStartBodySchema = z.object({
   requiredDays: z.number().int().positive().default(90),
 });
 
+/**
+ * Phase 9: one resolution path for every backtest-consuming gate.
+ * Priority: inline payload → explicit backtestId → the strategy's linked
+ * LEAN project's latest completed live_engine run. Fixes the old bug where
+ * backtestId was looked up as a projectId.
+ */
+async function resolveBacktest(
+  strategy: { leanProjectName?: string },
+  body: { backtest?: any; backtestId?: string },
+  fallbackProjectId: string
+): Promise<{ bt: any } | { error: string; code: number }> {
+  const normalize = (raw: any) => ({
+    ...raw,
+    id: raw.id ?? "inline",
+    projectId: raw.projectId ?? fallbackProjectId,
+    status: raw.status ?? "completed",
+    winRate: raw.winRate ?? 0,
+    totalTrades: raw.totalTrades ?? 0,
+    rawResults: raw.rawResults ?? {},
+    dataSource: raw.dataSource ?? "simulated",
+    runAt: raw.runAt ? new Date(raw.runAt as string) : new Date(),
+  });
+
+  if (body.backtest) return { bt: normalize(body.backtest) };
+
+  if (body.backtestId) {
+    const found = await storage.getLeanBacktestById(body.backtestId);
+    if (!found) return { error: "Backtest not found", code: 404 };
+    return { bt: found };
+  }
+
+  if (strategy.leanProjectName) {
+    const project = await storage.getLeanProjectByName(strategy.leanProjectName);
+    if (!project) {
+      return { error: `Linked LEAN project "${strategy.leanProjectName}" not found`, code: 404 };
+    }
+    const backtests = await storage.getLeanBacktestsByProject(project.id);
+    const latest = backtests.find(
+      (b) => b.status === "completed" && b.dataSource === "live_engine"
+    );
+    if (!latest) {
+      return {
+        error: `No completed live_engine backtest for project "${strategy.leanProjectName}" — run one first`,
+        code: 400,
+      };
+    }
+    return { bt: latest };
+  }
+
+  return {
+    error: "Provide backtest, backtestId, or link the strategy to a LEAN project (leanProjectName)",
+    code: 400,
+  };
+}
+
 const incubationObsBodySchema = incubationObservationSchema;
 
 const walkForwardConfigBodySchema = walkForwardConfigSchema.omit({ lockedAt: true });
@@ -105,17 +160,9 @@ export function registerGateRoutes(app: Express) {
       if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
       const body = parsed.data;
 
-      let bt: any;
-      if (body.backtestId) {
-        const backtests = await storage.getLeanBacktestsByProject(body.backtestId);
-        const found = backtests[0];
-        if (!found) return res.status(404).json({ error: "Backtest not found" });
-        bt = found;
-      } else if (body.backtest) {
-        bt = { ...body.backtest, dataSource: body.backtest.dataSource ?? "simulated" };
-      } else {
-        return res.status(400).json({ error: "Provide either backtest or backtestId" });
-      }
+      const resolved = await resolveBacktest(strategy, body, id);
+      if ("error" in resolved) return res.status(resolved.code).json({ error: resolved.error });
+      const bt = resolved.bt;
 
       const result = computeFeasibility(bt, strategy.goals, {
         minSampleTrades: body.minSampleTrades,
@@ -216,17 +263,9 @@ export function registerGateRoutes(app: Express) {
       if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
       const body = parsed.data;
 
-      let bt: any;
-      if (body.backtestId) {
-        const backtests = await storage.getLeanBacktestsByProject(body.backtestId);
-        const found = backtests[0];
-        if (!found) return res.status(404).json({ error: "Backtest not found" });
-        bt = found;
-      } else if (body.backtest) {
-        bt = { ...body.backtest, dataSource: body.backtest.dataSource ?? "simulated" };
-      } else {
-        return res.status(400).json({ error: "Provide either backtest or backtestId" });
-      }
+      const resolved = await resolveBacktest(strategy, body, id);
+      if ("error" in resolved) return res.status(resolved.code).json({ error: resolved.error });
+      const bt = resolved.bt;
 
       const evaluable = assertEvaluable(bt);
       if (!evaluable.ok) {
@@ -303,28 +342,9 @@ export function registerGateRoutes(app: Express) {
       if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
       const body = parsed.data;
 
-      // Resolve backtest
-      let bt: any;
-      if (body.backtestId) {
-        const backtests = await storage.getLeanBacktestsByProject(body.backtestId);
-        const found = backtests[0];
-        if (!found) return res.status(404).json({ error: "Backtest not found" });
-        bt = found;
-      } else if (body.backtest) {
-        bt = {
-          ...body.backtest,
-          id: body.backtest.id ?? "inline",
-          projectId: body.backtest.projectId ?? id,
-          status: body.backtest.status ?? "completed",
-          winRate: body.backtest.winRate ?? 0,
-          totalTrades: body.backtest.totalTrades ?? 0,
-          rawResults: body.backtest.rawResults ?? {},
-          dataSource: body.backtest.dataSource ?? "simulated",
-          runAt: body.backtest.runAt ? new Date(body.backtest.runAt as string) : new Date(),
-        };
-      } else {
-        return res.status(400).json({ error: "Provide either backtest or backtestId" });
-      }
+      const resolved = await resolveBacktest(strategy, body, id);
+      if ("error" in resolved) return res.status(resolved.code).json({ error: resolved.error });
+      const bt = resolved.bt;
 
       // Monte Carlo — locked goals supply the default pass thresholds
       // (explicit body values still win, e.g. for exploratory runs).
@@ -462,13 +482,27 @@ export function registerGateRoutes(app: Express) {
       }
 
       const bodySchema = z.object({
-        projectName: z.string().regex(/^[A-Za-z0-9_-]+$/),
-        code: z.string().min(10),
+        projectName: z.string().regex(/^[A-Za-z0-9_-]+$/).optional(),
+        code: z.string().min(10).optional(),
         socketId: z.string().optional(),
       });
       const parsed = bodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-      const { projectName, code, socketId } = parsed.data;
+      const { socketId } = parsed.data;
+
+      // Default project + code from the strategy's linked LEAN project
+      const projectName = parsed.data.projectName ?? strategy.leanProjectName;
+      if (!projectName) {
+        return res.status(400).json({
+          error: "Provide projectName, or link the strategy to a LEAN project (leanProjectName).",
+        });
+      }
+      let code = parsed.data.code;
+      if (!code) {
+        const project = await storage.getLeanProjectByName(projectName);
+        if (!project) return res.status(404).json({ error: `LEAN project "${projectName}" not found` });
+        code = project.code;
+      }
 
       await storage.recordTrial({
         trialType: "optimization",

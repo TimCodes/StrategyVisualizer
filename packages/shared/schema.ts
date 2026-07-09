@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pgTable, text, boolean, integer, varchar, timestamp, jsonb, real, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, integer, varchar, timestamp, jsonb, json, real, uuid, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export const settingsTable = pgTable("settings", {
@@ -18,6 +18,18 @@ export const settingsTable = pgTable("settings", {
   systemAlerts: boolean("system_alerts").notNull().default(true),
   email: text("email"),
 });
+
+// Session storage for connect-pg-simple (Phase 8 auth). Declared here so
+// drizzle-kit push doesn't try to drop the table it finds at runtime.
+export const sessionTable = pgTable(
+  "session",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: json("sess").notNull(),
+    expire: timestamp("expire", { precision: 6 }).notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)]
+);
 
 export const insertSettingsDbSchema = createInsertSchema(settingsTable).omit({ id: true });
 export type SettingsDb = typeof settingsTable.$inferSelect;
@@ -293,6 +305,9 @@ export const strategySchema = z.object({
   gateHistory: z.array(gateHistoryEntrySchema).default([]),
   edge: z.string().optional(),
   edgeAssessment: z.enum(["strong", "weak", "none"]).optional(),
+  /** Link to the LEAN project implementing this strategy — lets gates
+   *  resolve "the latest live_engine backtest" server-side. */
+  leanProjectName: z.string().optional(),
   goals: strategyGoalsSchema.optional(),
   positionSizingPlan: positionSizingPlanSchema.optional(),
   expectedPerformance: expectedPerformanceSchema.optional(),
@@ -466,6 +481,7 @@ export const strategiesTable = pgTable("strategies", {
   incubationObservations: jsonb("incubation_observations").notNull().default([]),
   edge: text("edge"),
   edgeAssessment: text("edge_assessment"),
+  leanProjectName: text("lean_project_name"),
   goals: jsonb("goals"),
   positionSizingPlan: jsonb("position_sizing_plan"),
   expectedPerformance: jsonb("expected_performance"),
@@ -664,7 +680,10 @@ export const trialsTable = pgTable("trials", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const trialTypeSchema = z.enum(["generation", "refinement", "optimization"]);
+// "backtest" (Phase 9): every real-engine backtest is a look at the data
+// and must deflate the DSR like any other trial — manual iteration is not
+// free just because no AI was involved.
+export const trialTypeSchema = z.enum(["generation", "refinement", "optimization", "backtest"]);
 export type TrialType = z.infer<typeof trialTypeSchema>;
 
 export const insertTrialSchema = createInsertSchema(trialsTable).omit({

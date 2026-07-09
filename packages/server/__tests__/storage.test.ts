@@ -370,6 +370,38 @@ describe("quit rule + go-live guard (Davey Ch 24)", () => {
   });
 });
 
+describe("strategy <-> LEAN project link (Phase 9)", () => {
+  it("persists leanProjectName through create and update", async () => {
+    const s = await storage.createStrategy({
+      name: "L", description: "d", type: "momentum", status: "inactive",
+      performance: 0, sharpeRatio: 0, maxDrawdown: 0, winRate: 0, totalTrades: 0,
+      stage: "idea", gateStatus: "in_progress", gateHistory: [],
+      refinementHistory: [], incubationObservations: [],
+      leanProjectName: "MyProject",
+    });
+    expect(s.leanProjectName).toBe("MyProject");
+    const updated = await storage.updateStrategy(s.id, { leanProjectName: "Renamed" } as any);
+    expect(updated.leanProjectName).toBe("Renamed");
+  });
+
+  it("getLeanBacktestById finds a backtest by its own id", async () => {
+    const bt = await storage.createLeanBacktest({
+      projectId: "p1", status: "completed", totalReturn: 1, sharpeRatio: 1,
+      maxDrawdown: 1, winRate: 50, totalTrades: 10, equityCurve: [],
+      trades: [], rawResults: {}, errorLog: null, dataSource: "live_engine",
+    });
+    const found = await storage.getLeanBacktestById(bt.id);
+    expect(found?.id).toBe(bt.id);
+    expect(await storage.getLeanBacktestById("nope")).toBeNull();
+  });
+
+  it("records 'backtest' trials that count toward the strategy's total", async () => {
+    await storage.recordTrial({ trialType: "backtest", strategyId: "bt-s1", leanProjectName: "P" });
+    const count = await storage.getTrialCount("bt-s1");
+    expect(count.total).toBe(1);
+  });
+});
+
 describe("order audit log", () => {
   it("records attempts and returns them most recent first", async () => {
     await storage.recordOrderAudit({

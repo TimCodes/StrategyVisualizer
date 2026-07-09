@@ -12,7 +12,7 @@ import {
   suggestOptimizations,
   simulateLeanBacktest,
 } from "../services/lean-agent";
-import { isLeanAvailable, runLeanBacktest } from "../services/lean-runner";
+import { isLeanAvailable, runLeanBacktest, LeanRunError } from "../services/lean-runner";
 import { emitToSocket, getIO } from "../ws";
 import { llmErrorToResponse } from "../lib/llmErrorResponse";
 
@@ -175,11 +175,28 @@ export function registerLeanRoutes(app: Express) {
         const streamBacktest = async () => {
           try {
             // Try real LEAN runner first (only active when LEAN_ENABLED=true)
+            let leanFailure: string | null = null;
             if (isLeanAvailable()) {
-              try {
-                emitLog("[LEAN] Starting real LEAN backtest…");
-                emitEvent("lean:backtest:progress", { progress: 10 });
-                const leanResult = await runLeanBacktest({ projectName: name, code });
+              // One automatic retry: engine startup occasionally hiccups
+              // (docker cold start, transient IO). Only the ENGINE run is
+              // retried — storage failures must surface, not re-run docker.
+              let leanResult: Awaited<ReturnType<typeof runLeanBacktest>> | null = null;
+              for (let attempt = 1; attempt <= 2 && !leanResult; attempt++) {
+                try {
+                  emitLog(`[LEAN] Starting real LEAN backtest (attempt ${attempt}/2)…`);
+                  emitEvent("lean:backtest:progress", { progress: 10 });
+                  leanResult = await runLeanBacktest({ projectName: name, code });
+                } catch (leanErr) {
+                  const stderr = (leanErr as LeanRunError).stderr ?? "";
+                  leanFailure =
+                    `${(leanErr as Error).message}` +
+                    (stderr ? `\n--- stderr (tail) ---\n${stderr.slice(-2000)}` : "");
+                  console.warn(`[LEAN] Attempt ${attempt} failed:`, (leanErr as Error).message);
+                  emitLog(`[LEAN] Attempt ${attempt} failed: ${(leanErr as Error).message}`);
+                }
+              }
+
+              if (leanResult) {
                 emitEvent("lean:backtest:progress", { progress: 100 });
                 const updatedBacktest = await storage.updateLeanBacktest(backtest.id, {
                   status: "completed",
@@ -194,15 +211,33 @@ export function registerLeanRoutes(app: Express) {
                   dataSource: "live_engine",
                 });
                 await storage.updateLeanProjectLastBacktest(name, backtest.id);
+
+                // Phase 9: every real-engine backtest is a trial — it
+                // deflates the DSR of any strategy linked to this project.
+                const linked = (await storage.getStrategies()).filter(
+                  (s) => s.leanProjectName === name
+                );
+                if (linked.length > 0) {
+                  for (const s of linked) {
+                    await storage.recordTrial({
+                      trialType: "backtest",
+                      strategyId: s.id,
+                      leanProjectName: name,
+                      promptSummary: "live_engine backtest",
+                    });
+                  }
+                } else {
+                  await storage.recordTrial({
+                    trialType: "backtest",
+                    leanProjectName: name,
+                    promptSummary: "live_engine backtest (no linked strategy)",
+                  });
+                }
+
                 emitEvent("lean:backtest:complete", updatedBacktest);
                 return;
-              } catch (leanErr) {
-                console.warn(
-                  "[LEAN] Real runner failed, falling back to simulator:",
-                  (leanErr as Error).message
-                );
-                emitLog(`[LEAN] Runner error: ${(leanErr as Error).message} — falling back to simulator`);
               }
+              emitLog("[LEAN] Real engine failed twice — falling back to simulator. See errorLog for details.");
             }
 
             // Simulator path (default in Replit; fallback when LEAN fails)
@@ -224,19 +259,25 @@ export function registerLeanRoutes(app: Express) {
               equityCurve: results.equityCurve,
               trades: [],
               rawResults: results,
+              // Preserve WHY the real engine was bypassed — a simulated
+              // fallback with a hidden cause is how bad data sneaks in.
+              errorLog: leanFailure
+                ? `LEAN engine failed; result is SIMULATED fallback.\n${leanFailure}`
+                : null,
             });
             await storage.updateLeanProjectLastBacktest(name, backtest.id);
             emitEvent("lean:backtest:complete", updatedBacktest);
           } catch (err) {
             const errorMessage = (err as Error).message;
+            // Never let the failure handler itself crash the process
             await storage.updateLeanBacktest(backtest.id, {
               status: "failed",
               errorLog: errorMessage,
-            });
+            }).catch((e) => console.error("Failed to record backtest failure:", e));
             emitEvent("lean:backtest:error", errorMessage);
           }
         };
-        streamBacktest();
+        streamBacktest().catch((e) => console.error("streamBacktest crashed:", e));
       } catch (error) {
         console.error("Backtest error:", error);
         res.status(500).json({ error: "Failed to run backtest" });
