@@ -1,5 +1,10 @@
 # Strategy Factory Implementation Plan
 
+> **STATUS: COMPLETE (2026-07-08).** All 8 phases shipped and E2E-verified
+> (commits `743fd85` → `502d7bb`). The successor roadmap is
+> **`FACTORY_OPERATIONS_PLAN.md`** — the shift from building the factory to
+> operating it.
+
 **Source methodology:** Kevin J. Davey, *Building Winning Algorithmic Trading Systems* (Wiley, 2014)
 **Goal:** Close the gap between the book's full strategy-development process and what Praxis implements today, so every pipeline stage (`idea → feasibility → walk_forward → monte_carlo → incubation → diversification_sizing → live`) has real, evaluable tooling behind it.
 
