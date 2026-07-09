@@ -1,0 +1,290 @@
+{
+  "startedAt": "2026-07-09 03:51 UTC",
+  "baselineTrials": 1,
+  "candidates": [
+    {
+      "doc": "023",
+      "name": "C1 RSI(2) Pullback",
+      "project": "C1Rsi2",
+      "strategyId": "ecd021f3-bc25-4838-8234-90cb54490efb",
+      "backtest": {
+        "totalReturn": 106.465,
+        "sharpeRatio": 0.222,
+        "maxDrawdown": 10.7,
+        "winRate": 68,
+        "totalTrades": 385,
+        "dataSource": "live_engine",
+        "closedTrades": 192,
+        "errorLog": null
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: annualized return 2.8% < goal 4%; return/DD ratio 0.26 < goal 0.3.",
+        "metrics": {
+          "annualizedReturnPct": 2.828101298090524,
+          "retDDRatio": 0.2643085325318247,
+          "tradesPerYear": 14.810551537705377,
+          "avgTradeUsd": 563.9771874999998,
+          "maxDrawdownPct": 10.7,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "025",
+      "name": "C1 Double 7s (re-reg)",
+      "project": "C1Double7",
+      "strategyId": "6ea62a23-5824-4e19-a7ab-4dd0c1086a19",
+      "backtest": {
+        "totalReturn": 250.292,
+        "sharpeRatio": 0.34,
+        "maxDrawdown": 16.6,
+        "winRate": 73,
+        "totalTrades": 489,
+        "dataSource": "live_engine",
+        "closedTrades": 244,
+        "errorLog": null
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: return/DD ratio 0.30 < goal 0.3.",
+        "metrics": {
+          "annualizedReturnPct": 4.940629986807421,
+          "retDDRatio": 0.29762831245827837,
+          "tradesPerYear": 18.81132390113748,
+          "avgTradeUsd": 1037.2892213114758,
+          "maxDrawdownPct": 16.6,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "026",
+      "name": "C1 Three Lower Closes",
+      "project": "C1Down3",
+      "strategyId": "f2cdc389-bae6-42b7-8ea2-a2d55d4789f1",
+      "backtest": {
+        "totalReturn": 107.623,
+        "sharpeRatio": 0.254,
+        "maxDrawdown": 14,
+        "winRate": 67,
+        "totalTrades": 409,
+        "dataSource": "live_engine",
+        "closedTrades": 204,
+        "errorLog": null
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: annualized return 2.9% < goal 4%; return/DD ratio 0.20 < goal 0.3.",
+        "metrics": {
+          "annualizedReturnPct": 2.8502279693153776,
+          "retDDRatio": 0.20358771209395554,
+          "tradesPerYear": 15.733806698497402,
+          "avgTradeUsd": 544.5257843137256,
+          "maxDrawdownPct": 14,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "027",
+      "name": "C1 IBS Reversion",
+      "project": "C1Ibs",
+      "strategyId": "929803b5-5580-4b64-89ec-7d88f5db70e5",
+      "backtest": {
+        "totalReturn": 158.991,
+        "sharpeRatio": 0.314,
+        "maxDrawdown": 13.4,
+        "winRate": 61,
+        "totalTrades": 1175,
+        "dataSource": "live_engine",
+        "closedTrades": 587,
+        "errorLog": null
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: annualized return 3.7% < goal 4%; return/DD ratio 0.28 < goal 0.3.",
+        "metrics": {
+          "annualizedReturnPct": 3.728628004089285,
+          "retDDRatio": 0.2782558212006929,
+          "tradesPerYear": 45.20103391377615,
+          "avgTradeUsd": 280.0638160136286,
+          "maxDrawdownPct": 13.4,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "030",
+      "name": "C1 VIX-Spike Reversion",
+      "project": "C1VixSpike",
+      "strategyId": "e5190164-410d-4fe1-b585-1d9b7499141b",
+      "backtest": {
+        "totalReturn": 57.336,
+        "sharpeRatio": 0.068,
+        "maxDrawdown": 17.9,
+        "winRate": 69,
+        "totalTrades": 248,
+        "dataSource": "live_engine",
+        "closedTrades": 124,
+        "errorLog": null
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: annualized return 1.8% < goal 4%; return/DD ratio 0.10 < goal 0.3.",
+        "metrics": {
+          "annualizedReturnPct": 1.75875039603961,
+          "retDDRatio": 0.09825421206925196,
+          "tradesPerYear": 9.540292861460753,
+          "avgTradeUsd": 469.6278225806453,
+          "maxDrawdownPct": 17.9,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "045",
+      "name": "C1 Turn-of-Month",
+      "project": "C1Tom",
+      "strategyId": "6c448f3c-4485-46f6-a0db-73310885630d",
+      "backtest": {
+        "totalReturn": 166.027,
+        "sharpeRatio": 0.237,
+        "maxDrawdown": 31.1,
+        "winRate": 62,
+        "totalTrades": 623,
+        "dataSource": "live_engine",
+        "closedTrades": 311,
+        "errorLog": null
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: max drawdown 31.1% > goal 15%; return/DD ratio 0.12 < goal 0.3.",
+        "metrics": {
+          "annualizedReturnPct": 3.8356420291760562,
+          "retDDRatio": 0.1233325411310629,
+          "tradesPerYear": 23.966165215559613,
+          "avgTradeUsd": 553.0347266881032,
+          "maxDrawdownPct": 31.1,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "047",
+      "name": "C1 Halloween Effect",
+      "project": "C1Halloween",
+      "strategyId": "bdb81f85-c812-4d43-bcdf-528801fafcda",
+      "backtest": {
+        "totalReturn": 259.349,
+        "sharpeRatio": 0.27,
+        "maxDrawdown": 35.1,
+        "winRate": 73,
+        "totalTrades": 53,
+        "dataSource": "live_engine",
+        "closedTrades": 26,
+        "errorLog": null
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: max drawdown 35.1% > goal 15%; return/DD ratio 0.14 < goal 0.3.",
+        "metrics": {
+          "annualizedReturnPct": 5.0437318873316705,
+          "retDDRatio": 0.14369606516614444,
+          "tradesPerYear": 2.038855146749052,
+          "avgTradeUsd": 9831.011153846152,
+          "maxDrawdownPct": 35.1,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "058",
+      "name": "C1 Stock/Bond Ratio Rotation",
+      "project": "C1RatioRot",
+      "strategyId": "a51638d3-b4ba-4cde-b8a5-aabb72097787",
+      "backtest": {
+        "totalReturn": 396.671,
+        "sharpeRatio": 0.435,
+        "maxDrawdown": 28.4,
+        "winRate": 64,
+        "totalTrades": 1110,
+        "dataSource": "live_engine",
+        "closedTrades": 799,
+        "errorLog": null
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: max drawdown 28.4% > goal 20%; return/DD ratio 0.26 < goal 0.4.",
+        "metrics": {
+          "annualizedReturnPct": 7.35485505019684,
+          "retDDRatio": 0.2589737693731282,
+          "tradesPerYear": 49.150422540902866,
+          "avgTradeUsd": 506.63440550688347,
+          "maxDrawdownPct": 28.4,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "073",
+      "name": "C1 GTAA (re-reg)",
+      "project": "C1Gtaa",
+      "strategyId": "8cd6c05c-d63f-40b4-9178-65d54d1ed4d3",
+      "backtest": {
+        "totalReturn": 136.97,
+        "sharpeRatio": 0.36,
+        "maxDrawdown": 13.1,
+        "winRate": 85,
+        "totalTrades": 629,
+        "dataSource": "live_engine",
+        "closedTrades": 530,
+        "note": "re-run after generator brace bug fixed; first attempt fell back to simulator (errorLog preserved)"
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: annualized return 4.6% < goal 5%; return/DD ratio 0.35 < goal 0.4.",
+        "metrics": {
+          "annualizedReturnPct": 4.65,
+          "retDDRatio": 0.355
+        }
+      }
+    },
+    {
+      "doc": "091",
+      "name": "C1 Stress Divergence (NOVEL)",
+      "project": "C1StressDiv",
+      "strategyId": "6ab1c48f-0cc3-4533-9c94-9d1f4bcae5d2",
+      "backtest": {
+        "totalReturn": 23.982,
+        "sharpeRatio": -0.029,
+        "maxDrawdown": 13.4,
+        "winRate": 65,
+        "totalTrades": 211,
+        "dataSource": "live_engine",
+        "closedTrades": 105,
+        "errorLog": null
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: annualized return 1.2% < goal 4%; return/DD ratio 0.09 < goal 0.3.",
+        "metrics": {
+          "annualizedReturnPct": 1.2017535490519426,
+          "retDDRatio": 0.0896831006755181,
+          "tradesPerYear": 11.725491936301855,
+          "avgTradeUsd": 233.87419047619048,
+          "maxDrawdownPct": 13.4,
+          "tooGoodToBeTrue": false
+        }
+      }
+    }
+  ],
+  "finalTrials": 11,
+  "byType": {
+    "generation": 0,
+    "refinement": 0,
+    "optimization": 0,
+    "backtest": 11
+  },
+  "outcome": "0 of 10 survived feasibility"
+}
