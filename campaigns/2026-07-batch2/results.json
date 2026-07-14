@@ -1,0 +1,170 @@
+{
+  "startedAt": "2026-07-14 22:34 UTC",
+  "baselineTrials": 13,
+  "candidates": [
+    {
+      "doc": "081",
+      "name": "C2 Gap Budget Fade (NOVEL)",
+      "project": "C2GapBudget",
+      "strategyId": "4514a14a-3d08-48b7-99d0-a4b8f9a218e0",
+      "backtest": {
+        "totalReturn": -10.104,
+        "sharpeRatio": -0.322,
+        "maxDrawdown": 21,
+        "winRate": 55,
+        "totalTrades": 138,
+        "dataSource": "live_engine",
+        "closedTrades": 69
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: annualized return -0.4% < goal 4%; max drawdown 21.0% > goal 20%; return/DD ratio -0.02 < goal 0.3; 5.3 trades/year < goal 8; average trade $-139.69 does not clear the $25 slippage/commission buffer.",
+        "metrics": {
+          "annualizedReturnPct": -0.40892050609057096,
+          "retDDRatio": -0.01947240505193195,
+          "tradesPerYear": 5.308717174554135,
+          "maxDrawdownPct": 21,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "086",
+      "name": "C2 Vol-of-Vol Gate (NOVEL)",
+      "project": "C2VolOfVol",
+      "strategyId": "9348b113-1d86-42ce-83e2-5831294919e8",
+      "backtest": {
+        "totalReturn": 293.142,
+        "sharpeRatio": 0.345,
+        "maxDrawdown": 27.3,
+        "winRate": 52,
+        "totalTrades": 63,
+        "dataSource": "live_engine",
+        "closedTrades": 31
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: max drawdown 27.3% > goal 20%; return/DD ratio 0.20 < goal 0.4; 2.4 trades/year < goal 4.",
+        "metrics": {
+          "annualizedReturnPct": 5.407545783909207,
+          "retDDRatio": 0.19807860014319437,
+          "tradesPerYear": 2.423544797079062,
+          "maxDrawdownPct": 27.3,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "090",
+      "name": "C2 Liquidity Vacuum Fade (NOVEL)",
+      "project": "C2Vacuum",
+      "strategyId": "8fdbd112-3a48-4a31-8888-fa6ab4add2a0",
+      "backtest": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "totalTrades": 0,
+        "dataSource": "live_engine",
+        "closedTrades": 0
+      },
+      "feasibility": {
+        "verdict": "cannot_evaluate",
+        "reason": "Only 0 trades in the test period; 30+ needed for statistical significance. Extend the test period or data.",
+        "metrics": {
+          "annualizedReturnPct": 0,
+          "retDDRatio": null,
+          "tradesPerYear": 0,
+          "maxDrawdownPct": 0,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "099",
+      "name": "C2 Vol Lifecycle Migration (NOVEL)",
+      "project": "C2VolMigrate",
+      "strategyId": "2c1d9553-7bf6-4cbf-ba51-bf1c0791e770",
+      "backtest": {
+        "totalReturn": 24.292,
+        "sharpeRatio": -0.14,
+        "maxDrawdown": 8.8,
+        "winRate": 54,
+        "totalTrades": 26,
+        "dataSource": "live_engine",
+        "closedTrades": 13
+      },
+      "feasibility": {
+        "verdict": "cannot_evaluate",
+        "reason": "Only 26 trades in the test period; 30+ needed for statistical significance. Extend the test period or data.",
+        "metrics": {
+          "annualizedReturnPct": 0.8400683215310734,
+          "retDDRatio": 0.0954623092648947,
+          "tradesPerYear": 1.0001930908580254,
+          "maxDrawdownPct": 8.8,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "045b",
+      "name": "C2 Turn-of-Month + Regime (FIX)",
+      "project": "C2TomRegime",
+      "strategyId": "89008cf9-d5e8-437e-bb03-a6d2d99e884c",
+      "backtest": {
+        "totalReturn": 112.238,
+        "sharpeRatio": 0.219,
+        "maxDrawdown": 13.7,
+        "winRate": 63,
+        "totalTrades": 447,
+        "dataSource": "live_engine",
+        "closedTrades": 223
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: return/DD ratio 0.21 < goal 0.3.",
+        "metrics": {
+          "annualizedReturnPct": 2.9372467662864166,
+          "retDDRatio": 0.21439757418149027,
+          "tradesPerYear": 17.19562736975144,
+          "maxDrawdownPct": 13.7,
+          "tooGoodToBeTrue": false
+        }
+      }
+    },
+    {
+      "doc": "047b",
+      "name": "C2 Halloween + Regime (FIX)",
+      "project": "C2HalloweenRegime",
+      "strategyId": "dc3259b3-fecb-4c2c-bae1-b12c3a5ed490",
+      "backtest": {
+        "totalReturn": 141.816,
+        "sharpeRatio": 0.237,
+        "maxDrawdown": 19.4,
+        "winRate": 33,
+        "totalTrades": 135,
+        "dataSource": "live_engine",
+        "closedTrades": 67
+      },
+      "feasibility": {
+        "verdict": "fail",
+        "reason": "Does not meet locked goals: max drawdown 19.4% > goal 15%; return/DD ratio 0.18 < goal 0.3.",
+        "metrics": {
+          "annualizedReturnPct": 3.4551875414482236,
+          "retDDRatio": 0.17810245059011462,
+          "tradesPerYear": 5.193310279455132,
+          "maxDrawdownPct": 19.4,
+          "tooGoodToBeTrue": false
+        }
+      }
+    }
+  ],
+  "finalTrials": 19,
+  "byType": {
+    "generation": 0,
+    "refinement": 0,
+    "optimization": 0,
+    "backtest": 19
+  },
+  "outcome": "0 of 6 passed feasibility (4 fail, 2 cannot_evaluate)"
+}
