@@ -116,7 +116,7 @@ export interface IStorage {
 
   recordGateResult(data: InsertGateResult): Promise<GateResult>;
   getGateResults(strategyId: string): Promise<GateResult[]>;
-  startIncubation(strategyId: string, requiredDays: number): Promise<Strategy>;
+  startIncubation(strategyId: string, requiredDays: number, startedAt?: Date): Promise<Strategy>;
   addIncubationObservation(strategyId: string, obs: IncubationObservation): Promise<Strategy>;
   updateWalkForwardConfig(strategyId: string, config: WalkForwardConfig): Promise<Strategy>;
 
@@ -1634,14 +1634,17 @@ export class MemStorage implements IStorage {
 
   // ─── Incubation ──────────────────────────────────────────────
 
-  async startIncubation(strategyId: string, requiredDays: number): Promise<Strategy> {
+  async startIncubation(strategyId: string, requiredDays: number, startedAt?: Date): Promise<Strategy> {
+    // Backdating is allowed (aligning the window to a real approval date),
+    // but never a future start — that would fabricate elapsed time.
+    const start = startedAt && startedAt.getTime() <= Date.now() ? startedAt : new Date();
     try {
       const db = await getDb();
       if (db) {
         const [existing] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, strategyId));
         if (!existing) throw new Error("Strategy not found");
         const current = this.mapDbStrategy(existing);
-        const updated: Strategy = { ...current, incubationStartedAt: new Date(), requiredDays, incubationObservations: [] };
+        const updated: Strategy = { ...current, incubationStartedAt: start, requiredDays, incubationObservations: [] };
         const [row] = await db.update(strategiesTable)
           .set(this.strategyToDbValues(updated))
           .where(eq(strategiesTable.id, strategyId))
@@ -1653,7 +1656,7 @@ export class MemStorage implements IStorage {
     }
     const existing = this.strategies.get(strategyId);
     if (!existing) throw new Error("Strategy not found");
-    const updated: Strategy = { ...existing, incubationStartedAt: new Date(), requiredDays, incubationObservations: [] };
+    const updated: Strategy = { ...existing, incubationStartedAt: start, requiredDays, incubationObservations: [] };
     this.strategies.set(strategyId, updated);
     return updated;
   }

@@ -68,6 +68,8 @@ const sizingSweepBodySchema = z.object({
 
 const incubationStartBodySchema = z.object({
   requiredDays: z.number().int().positive().default(90),
+  // optional backdated start (ISO date) — cannot be in the future
+  startedAt: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
 });
 
 /**
@@ -617,7 +619,8 @@ export function registerGateRoutes(app: Express) {
       const parsed = incubationStartBodySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-      const updated = await storage.startIncubation(id, parsed.data.requiredDays);
+      const startedAt = parsed.data.startedAt ? new Date(parsed.data.startedAt) : undefined;
+      const updated = await storage.startIncubation(id, parsed.data.requiredDays, startedAt);
 
       await storage.recordGateResult({
         strategyId: id,

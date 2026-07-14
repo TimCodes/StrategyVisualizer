@@ -13,6 +13,7 @@ import { registerIBKRRoutes } from "./routes/ibkr";
 import { registerLeanRoutes } from "./routes/lean";
 import { registerGateRoutes } from "./routes/gates";
 import { registerMonitoringRoutes } from "./routes/monitoring";
+import { registerIncubationRoutes } from "./routes/incubation";
 import { initializeWebSocket } from "./ws";
 import { isLiveTradingEnabled } from "./lib/liveTrading";
 import { isLeanAvailable } from "./services/lean-runner";
@@ -33,6 +34,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerLeanRoutes(app);
   registerGateRoutes(app);
   registerMonitoringRoutes(app);
+  registerIncubationRoutes(app);
 
   app.get("/api/system/status", (_req: Request, res: Response) => {
     res.json({

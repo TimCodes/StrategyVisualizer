@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { setupAuth, setupRateLimits } from "./lib/auth";
+import { startScheduler } from "./lib/scheduler";
 
 const app = express();
 // Backtest payloads (equity curves + trade lists) routinely exceed the
@@ -74,5 +75,6 @@ app.use((req, res, next) => {
     ...(process.platform !== "win32" ? { reusePort: true } : {}),
   }, () => {
     log(`serving on port ${port}`);
+    startScheduler();
   });
 })();
