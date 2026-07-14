@@ -278,9 +278,9 @@ If the code hardcodes `set_start_date(...)` instead, **every in-sample and out-o
 |---|---|---|
 | 1 | 29 US ETFs (broad market, bonds, commodities, all 11 sector SPDRs) | Yahoo Finance |
 | 2 | VIX full history (as index feed + raw CSV) | CBOE |
-| 3 | BTC/ETH daily | Yahoo Finance |
+| 3 | BTC/ETH daily, 8 FX majors (EURUSD, GBPUSD, USDJPY, …) | Yahoo Finance |
 
-Each refresh rewrites `data/PROVENANCE.md` with source, adjustment method, row counts, and coverage per symbol — the provenance your research should record before trusting any backtest. Yahoo prices are split-adjusted at source, so factor files carry dividends only. **This ETF set is not a survivorship-safe single-stock universe**, and intraday/options strategies still need paid data.
+Each refresh rewrites `data/PROVENANCE.md` with source, adjustment method, row counts, and coverage per symbol — the provenance your research should record before trusting any backtest. Yahoo prices are split-adjusted at source, so factor files carry dividends only. `GET /api/system/status` reports data freshness (a stale banner warns in the UI); set `DATA_REFRESH_CRON` to auto-refresh on a schedule. **This ETF set is not a survivorship-safe single-stock universe**, and intraday/options strategies still need paid data.
 
 ---
 

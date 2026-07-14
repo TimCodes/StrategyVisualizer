@@ -65,6 +65,13 @@ EQUITIES = {
 
 CRYPTO = {"BTCUSD": "BTC-USD", "ETHUSD": "ETH-USD"}  # LEAN pair -> Yahoo ticker
 
+# FX majors (LEAN forex pair -> Yahoo ticker). Written to the oanda market.
+FX = {
+    "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X", "USDJPY": "USDJPY=X",
+    "USDCHF": "USDCHF=X", "AUDUSD": "AUDUSD=X", "USDCAD": "USDCAD=X",
+    "NZDUSD": "NZDUSD=X", "EURGBP": "EURGBP=X",
+}
+
 VIX_URL = "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv"
 
 FAR_FUTURE = "20501231"
@@ -244,6 +251,38 @@ def write_crypto(pair: str, yahoo: str, provenance: dict) -> None:
     log(f"  ok {pair}: {len(df)} rows {df.index[0].date()} -> {df.index[-1].date()}")
 
 
+# ── FX (forex, oanda market) ─────────────────────────────────
+
+def write_fx(pair: str, yahoo: str, provenance: dict) -> None:
+    df = yf.Ticker(yahoo).history(period="max", auto_adjust=False)
+    if df.empty:
+        log(f"  !! {pair}: no data returned, skipped")
+        return
+    df = df[df["Close"].notna()]
+    df.index = df.index.tz_localize(None)
+    sym = pair.lower()
+    # LEAN forex daily: "yyyyMMdd HH:mm,open,high,low,close" (no volume)
+    csv_lines = [
+        f"{ts.strftime('%Y%m%d')} 00:00,"
+        f"{row['Open']:.6f},{row['High']:.6f},{row['Low']:.6f},{row['Close']:.6f}"
+        for ts, row in df.iterrows()
+    ]
+    zip_write(
+        os.path.join(DATA, "forex", "oanda", "daily", f"{sym}.zip"),
+        f"{sym}.csv",
+        "\n".join(csv_lines) + "\n",
+    )
+    provenance[pair] = {
+        "type": "forex (market: oanda)",
+        "source": f"Yahoo Finance ({yahoo})",
+        "adjustment": "none",
+        "rows": len(df),
+        "first": df.index[0].strftime("%Y-%m-%d"),
+        "last": df.index[-1].strftime("%Y-%m-%d"),
+    }
+    log(f"  ok {pair}: {len(df)} rows {df.index[0].date()} -> {df.index[-1].date()}")
+
+
 # ── provenance ───────────────────────────────────────────────
 
 def write_provenance(provenance: dict) -> None:
@@ -307,6 +346,15 @@ def main() -> None:
             continue
         try:
             write_crypto(pair, yahoo, provenance)
+        except Exception as e:
+            log(f"  !! {pair}: {e}")
+
+    log("Tier 3 — FX")
+    for pair, yahoo in FX.items():
+        if subset and pair not in subset:
+            continue
+        try:
+            write_fx(pair, yahoo, provenance)
         except Exception as e:
             log(f"  !! {pair}: {e}")
 

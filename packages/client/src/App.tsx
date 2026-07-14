@@ -20,8 +20,25 @@ import NotFound from "@/pages/not-found";
 import { AlertTriangle, FlaskConical, Info, Lock } from "lucide-react";
 import { useState } from "react";
 
+interface SystemStatus {
+  liveTradingEnabled: boolean;
+  backtestEngine: string;
+  data?: { stale: boolean; note: string; lastCoverage: string | null } | null;
+}
+
+function StaleDataBanner() {
+  const { data } = useQuery<SystemStatus>({ queryKey: ["/api/system/status"] });
+  if (!data?.data?.stale) return null;
+  return (
+    <div className="flex items-center gap-2 px-4 py-2 bg-orange-500/15 border-b border-orange-500/40 text-orange-400 text-sm font-medium shrink-0">
+      <AlertTriangle className="h-4 w-4 shrink-0" />
+      <span>{data.data.note}</span>
+    </div>
+  );
+}
+
 function SimulatedModeBanner() {
-  const { data } = useQuery<{ liveTradingEnabled: boolean; backtestEngine: string }>({
+  const { data } = useQuery<SystemStatus>({
     queryKey: ["/api/system/status"],
   });
 
@@ -170,6 +187,7 @@ function App() {
               <Sidebar />
               <div className="flex flex-col flex-1 min-w-0">
                 <SimulatedModeBanner />
+                <StaleDataBanner />
                 <TrialCounterBanner />
                 <Router />
               </div>

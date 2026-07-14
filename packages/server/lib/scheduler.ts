@@ -1,3 +1,5 @@
+import { spawn } from "child_process";
+import path from "path";
 import cron from "node-cron";
 import { runAllIncubationGhostRuns } from "../services/incubation-runner";
 import { isLeanAvailable } from "../services/lean-runner";
@@ -12,7 +14,30 @@ import { isLeanAvailable } from "../services/lean-runner";
 //  more robust when the app is not running 24/7.
 // ─────────────────────────────────────────────────────────────
 
+// Weekly data refresh: spawn the pipeline so ghost runs (Phase 12) actually
+// see new bars. Fresh data is what makes forward incubation forward.
+function scheduleDataRefresh(): void {
+  const expr = process.env.DATA_REFRESH_CRON;
+  if (!expr) return;
+  if (!cron.validate(expr)) {
+    console.error(`[scheduler] DATA_REFRESH_CRON invalid: "${expr}" — data refresh off.`);
+    return;
+  }
+  const script = path.resolve(process.cwd(), "packages/lean-engine/pipeline/download_data.py");
+  cron.schedule(expr, () => {
+    console.log(`[scheduler] data refresh starting @ ${new Date().toISOString()}`);
+    const child = spawn("python", [script], { stdio: "ignore", shell: false });
+    child.on("close", (code) =>
+      console.log(`[scheduler] data refresh finished (exit ${code}) @ ${new Date().toISOString()}`)
+    );
+    child.on("error", (err) => console.error("[scheduler] data refresh failed to spawn:", err.message));
+  });
+  console.log(`[scheduler] data refresh scheduled: "${expr}"`);
+}
+
 export function startScheduler(): void {
+  scheduleDataRefresh();
+
   const expr = process.env.INCUBATION_CRON;
   if (!expr) return;
   if (!cron.validate(expr)) {

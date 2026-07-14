@@ -19,6 +19,7 @@ import { isLiveTradingEnabled } from "./lib/liveTrading";
 import { isLeanAvailable } from "./services/lean-runner";
 import { isAuthEnabled } from "./lib/auth";
 import { storage } from "./storage";
+import { getDataFreshness } from "./services/data-freshness";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   registerStrategyRoutes(app);
@@ -36,11 +37,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerMonitoringRoutes(app);
   registerIncubationRoutes(app);
 
-  app.get("/api/system/status", (_req: Request, res: Response) => {
+  app.get("/api/system/status", async (_req: Request, res: Response) => {
     res.json({
       liveTradingEnabled: isLiveTradingEnabled(),
       backtestEngine: isLeanAvailable() ? "lean" : "simulated",
       authEnabled: isAuthEnabled(),
+      data: await getDataFreshness().catch(() => null),
     });
   });
 

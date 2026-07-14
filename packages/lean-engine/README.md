@@ -184,7 +184,9 @@ and converts free daily data into the LEAN workspace (`lean-workspace/data`):
 - **Tier 2 — VIX** full history from CBOE, written both as a LEAN index zip
   (`add_index("VIX")` — bars arrive at 16:15 ET) and as a raw CSV under
   `data/alternative/vix/` for custom-data use.
-- **Tier 3 — BTC/ETH daily** (Yahoo), written as `Market.COINBASE` crypto zips
+- **Tier 3 — BTC/ETH daily** (Yahoo), written as `Market.COINBASE` crypto zips,
+  plus **8 FX majors** written as `Market.OANDA` forex daily zips
+  (`add_forex("EURUSD", Resolution.DAILY, Market.OANDA)`)
   (`add_crypto("BTCUSD", Resolution.DAILY, Market.COINBASE)`).
 
 Every refresh rewrites `data/PROVENANCE.md` with source, adjustment method,
