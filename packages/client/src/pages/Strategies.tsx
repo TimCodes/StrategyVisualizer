@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import Header from "@/components/layout/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -293,7 +293,9 @@ export default function Strategies() {
                   <div className="flex justify-between items-start">
                     <div>
                       <CardTitle className="text-lg text-text-primary">
-                        {strategy.name}
+                        <Link href={`/strategies/${strategy.id}`} className="hover:text-primary hover:underline">
+                          {strategy.name}
+                        </Link>
                       </CardTitle>
                       <p className="text-text-secondary text-sm mt-1">
                         {strategy.description}

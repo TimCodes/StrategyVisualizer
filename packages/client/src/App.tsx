@@ -7,6 +7,7 @@ import { SocketProvider } from "@/contexts/SocketContext";
 import Sidebar from "@/components/layout/Sidebar";
 import Overview from "@/pages/Overview";
 import Strategies from "@/pages/Strategies";
+import StrategyDetail from "@/pages/StrategyDetail";
 import Backtesting from "@/pages/Backtesting";
 import Monitoring from "@/pages/Monitoring";
 import Portfolio from "@/pages/Portfolio";
@@ -86,6 +87,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Overview} />
       <Route path="/strategies" component={Strategies} />
+      <Route path="/strategies/:id" component={StrategyDetail} />
       <Route path="/editor" component={EditorPage} />
       <Route path="/backtesting" component={Backtesting} />
       <Route path="/monitoring" component={Monitoring} />

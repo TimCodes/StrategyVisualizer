@@ -31,10 +31,14 @@ async function initializeDb(): Promise<DrizzleDB | null> {
       db = drizzle(new Pool({ connectionString: url }), { schema }) as unknown as DrizzleDB;
       console.log("Database connection established (neon-serverless)");
     } else {
-      // Plain Postgres (local Docker, self-hosted): TCP driver
+      // Plain Postgres (local Docker, self-hosted): TCP driver.
+      // pg.Pool construction does NO network I/O — ping before declaring
+      // victory, or the app silently runs on memory while claiming a db.
       const pg = await import("pg");
       const { drizzle } = await import("drizzle-orm/node-postgres");
-      db = drizzle(new pg.default.Pool({ connectionString: url }), { schema });
+      const pool = new pg.default.Pool({ connectionString: url });
+      await pool.query("SELECT 1");
+      db = drizzle(pool, { schema });
       console.log("Database connection established (node-postgres)");
     }
     failedAtTime = 0;

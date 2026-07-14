@@ -187,25 +187,9 @@ export default function GatePipelinePanel({ strategyId }: Props) {
   // ─── Feasibility mutation ───────────────────────────────
 
   const feasibilityMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", `/api/strategies/${strategyId}/gates/feasibility`, {
-        // Placeholder simulated payload (same approach as Monte Carlo below):
-        // returns an honest cannot_evaluate until a real LEAN backtest is
-        // attached. Replace with a backtest picker when strategies link to
-        // LEAN projects.
-        backtest: {
-          totalReturn: 15,
-          sharpeRatio: 1.2,
-          maxDrawdown: 8,
-          winRate: 60,
-          totalTrades: 40,
-          equityCurve: Array.from({ length: 30 }, (_, i) => ({
-            date: `2024-${String(Math.floor(i / 30) + 1).padStart(2, "0")}-${String((i % 30) + 1).padStart(2, "0")}`,
-            value: 100 * Math.exp(i * 0.005),
-          })),
-          dataSource: "simulated",
-        },
-      }),
+    // Empty body: the server resolves the linked LEAN project's latest
+    // live_engine backtest (Phase 9). Errors clearly when nothing is linked.
+    mutationFn: () => apiRequest("POST", `/api/strategies/${strategyId}/gates/feasibility`, {}),
     onSuccess: () => { toast({ title: "Feasibility gate evaluated" }); invalidateAll(); },
     onError: (e: any) => toast({ title: "Feasibility failed", description: e.message, variant: "destructive" }),
   });
@@ -213,21 +197,8 @@ export default function GatePipelinePanel({ strategyId }: Props) {
   // ─── Monte Carlo mutation ───────────────────────────────
 
   const mcMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", `/api/strategies/${strategyId}/gates/monte-carlo`, {
-        backtest: {
-          totalReturn: 0.15,
-          sharpeRatio: 1.2,
-          maxDrawdown: 0.08,
-          winRate: 0.6,
-          totalTrades: 20,
-          equityCurve: Array.from({ length: 30 }, (_, i) => ({
-            date: `2024-${String(Math.floor(i / 30) + 1).padStart(2, "0")}-${String((i % 30) + 1).padStart(2, "0")}`,
-            value: 100 * Math.exp(i * 0.005 + (Math.random() - 0.5) * 0.02),
-          })),
-          dataSource: "simulated",
-        },
-      }),
+    // Empty body: server resolves the linked project's latest live_engine run.
+    mutationFn: () => apiRequest("POST", `/api/strategies/${strategyId}/gates/monte-carlo`, {}),
     onSuccess: () => { toast({ title: "Monte Carlo complete" }); invalidateAll(); },
     onError: (e: any) => toast({ title: "Monte Carlo failed", description: e.message, variant: "destructive" }),
   });
