@@ -7,6 +7,7 @@ import { analyzeDiversification } from "../services/diversification";
 import { buildTrackingReport } from "../services/monitoring";
 import { walkForwardCannotEvaluate, pboCannotEvaluate } from "../services/pbo";
 import { executeWalkForward } from "../services/walk-forward-runner";
+import { executeCpcv } from "../services/cpcv";
 import { isLeanAvailable } from "../services/lean-runner";
 import { emitToSocket, getIO } from "../ws";
 import { incubationObservationSchema, walkForwardConfigSchema, setSizingPlanBodySchema } from "@shared/schema";
@@ -604,6 +605,103 @@ export function registerGateRoutes(app: Express) {
       });
 
       res.json({ ...result, gateResult: gateRecord });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/strategies/:id/gates/cpcv — Combinatorial Purged Cross-
+  // Validation (López de Prado). Stronger PBO than single-split walk-forward:
+  // runs each grid combo once over the full period, slices into N blocks,
+  // and evaluates every C(N,N/2) IS/OOS split with purge+embargo. Requires a
+  // locked walk-forward config (its grid + startDate), LEAN, and >= 2 combos.
+  // Background; progress streams over cpcv:progress / cpcv:complete / cpcv:error.
+  app.post("/api/strategies/:id/gates/cpcv", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const strategy = await storage.getStrategyById(id);
+      if (!strategy) return res.status(404).json({ error: "Strategy not found" });
+
+      const config = strategy.walkForwardConfig;
+      if (!config?.lockedAt) {
+        return res.status(400).json({ error: "Lock a walk-forward config first (its grid + startDate drive CPCV)." });
+      }
+      if (!config.startDate) {
+        return res.status(400).json({ error: "Walk-forward config has no startDate." });
+      }
+      if ((config.parameters ?? []).length === 0) {
+        return res.status(400).json({ error: "CPCV needs a parameter grid; this config has none." });
+      }
+      if (!isLeanAvailable()) {
+        return res.status(400).json({ error: "LEAN is not enabled. CPCV needs the real engine." });
+      }
+
+      const bodySchema = z.object({
+        projectName: z.string().regex(/^[A-Za-z0-9_-]+$/).optional(),
+        code: z.string().min(10).optional(),
+        numBlocks: z.number().int().min(4).max(16).optional(),
+        embargo: z.number().int().min(0).max(4).optional(),
+        socketId: z.string().optional(),
+      });
+      const parsed = bodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+      const { socketId } = parsed.data;
+      const numBlocks = parsed.data.numBlocks ?? 8;   // even, ≥4
+      const embargo = parsed.data.embargo ?? 1;
+
+      const projectName = parsed.data.projectName ?? strategy.leanProjectName;
+      if (!projectName) {
+        return res.status(400).json({ error: "Provide projectName, or link the strategy to a LEAN project." });
+      }
+      let code = parsed.data.code;
+      if (!code) {
+        const project = await storage.getLeanProjectByName(projectName);
+        if (!project) return res.status(404).json({ error: `LEAN project "${projectName}" not found` });
+        code = project.code;
+      }
+
+      // Every CPCV run touches the data with an optimization intent — count it.
+      await storage.recordTrial({
+        trialType: "optimization",
+        strategyId: id,
+        leanProjectName: projectName,
+        promptSummary: `CPCV (${numBlocks} blocks)`,
+      });
+
+      const io = getIO();
+      const emit = (event: string, data: unknown) => {
+        if (socketId) emitToSocket(socketId, event, data);
+        else io?.emit(event, data);
+      };
+
+      res.json({ status: "running", numBlocks });
+
+      (async () => {
+        try {
+          const outcome = await executeCpcv({
+            projectName,
+            code: code!,
+            config: config as typeof config & { startDate: string },
+            numBlocks,
+            embargo,
+            onProgress: (p) => emit("cpcv:progress", { strategyId: id, ...p }),
+          });
+          if ("error" in outcome) {
+            await persistGateResult(id, "cpcv", "cannot_evaluate", null, "live_engine", outcome.error);
+            emit("cpcv:error", { strategyId: id, error: outcome.error });
+            return;
+          }
+          const gateRecord = await persistGateResult(
+            id, "cpcv", outcome.verdict.verdict,
+            outcome.result as any, "live_engine", outcome.verdict.reason
+          );
+          emit("cpcv:complete", { strategyId: id, ...outcome.verdict, gateResult: gateRecord });
+        } catch (err) {
+          const msg = (err as Error).message;
+          await persistGateResult(id, "cpcv", "cannot_evaluate", null, "live_engine", msg).catch(() => {});
+          emit("cpcv:error", { strategyId: id, error: msg });
+        }
+      })();
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

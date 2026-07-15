@@ -12,7 +12,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useSocketContext } from "@/contexts/SocketContext";
 import {
   ArrowLeft, Play, RefreshCw, Lock, CheckCircle2, XCircle, HelpCircle,
-  FlaskConical, TrendingUp, Scale, ShieldAlert, Link2, History,
+  FlaskConical, TrendingUp, Scale, ShieldAlert, Link2, History, Shuffle,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot,
@@ -104,6 +104,7 @@ export default function StrategyDetail() {
 
   const [projectInput, setProjectInput] = useState("");
   const [wfProgress, setWfProgress] = useState<string | null>(null);
+  const [cpcvProgress, setCpcvProgress] = useState<string | null>(null);
   const [btRunning, setBtRunning] = useState(false);
   const [startingEquity, setStartingEquity] = useState("100000");
   const [sweep, setSweep] = useState<any | null>(null);
@@ -144,10 +145,19 @@ export default function StrategyDetail() {
     socket.on("wf:progress", onProgress);
     socket.on("wf:complete", onComplete);
     socket.on("wf:error", onError);
+    const onCpcvProgress = (p: any) => setCpcvProgress(p?.message ?? null);
+    const onCpcvComplete = () => { setCpcvProgress(null); invalidate(); toast({ title: "CPCV complete" }); };
+    const onCpcvError = (e: any) => { setCpcvProgress(null); invalidate(); toast({ title: "CPCV failed", description: e?.error, variant: "destructive" }); };
+    socket.on("cpcv:progress", onCpcvProgress);
+    socket.on("cpcv:complete", onCpcvComplete);
+    socket.on("cpcv:error", onCpcvError);
     return () => {
       socket.off("wf:progress", onProgress);
       socket.off("wf:complete", onComplete);
       socket.off("wf:error", onError);
+      socket.off("cpcv:progress", onCpcvProgress);
+      socket.off("cpcv:complete", onCpcvComplete);
+      socket.off("cpcv:error", onCpcvError);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, id]);
@@ -189,6 +199,12 @@ export default function StrategyDetail() {
     mutationFn: () => apiRequest("POST", `/api/strategies/${id}/gates/walk-forward/run`, {}),
     onSuccess: () => { setWfProgress("Starting walk-forward…"); toast({ title: "Walk-forward running", description: "Grid × windows on the real engine — several minutes." }); },
     onError: (e: any) => toast({ title: "Walk-forward failed to start", description: e.message, variant: "destructive" }),
+  });
+
+  const cpcvRunMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/strategies/${id}/gates/cpcv`, { numBlocks: 8 }),
+    onSuccess: () => { setCpcvProgress("Starting CPCV…"); toast({ title: "CPCV running", description: "One backtest per grid combo, then combinatorial PBO." }); },
+    onError: (e: any) => toast({ title: "CPCV failed to start", description: e.message, variant: "destructive" }),
   });
 
   const sweepMutation = useMutation({
@@ -375,6 +391,39 @@ export default function StrategyDetail() {
               {latestWf.reason && <p className="text-xs text-text-secondary">{latestWf.reason}</p>}
             </>
           )}
+        </Section>
+
+        {/* ── CPCV (López de Prado) ── */}
+        <Section icon={Shuffle} title="CPCV (overfitting probability)" badge={<VerdictBadge verdict={latestFor("cpcv")?.verdict} />}
+          action={<Button size="sm" variant="outline" className="h-7 text-xs"
+            disabled={!s.walkForwardConfig?.lockedAt || !((s.walkForwardConfig?.parameters ?? []).length) || !projectName || !!cpcvProgress || cpcvRunMutation.isPending}
+            onClick={() => cpcvRunMutation.mutate()}>
+            {cpcvProgress ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}Run
+          </Button>}>
+          <p className="text-xs text-text-secondary">
+            Combinatorial Purged Cross-Validation — stronger than single-split walk-forward.
+            Runs each grid combo once, slices into blocks, and evaluates every IS/OOS split.
+            PBO &lt; 0.5 means the in-sample-optimal config generalizes; ≥ 0.5 is overfit.
+          </p>
+          {!((s.walkForwardConfig?.parameters ?? []).length) && (
+            <p className="text-xs text-amber-400">Needs a walk-forward config with a parameter grid (≥ 2 configs).</p>
+          )}
+          {cpcvProgress && <p className="text-xs text-amber-400">{cpcvProgress}</p>}
+          {(() => {
+            const c = latestFor("cpcv"); const m = c?.metrics as any;
+            if (!c || !m) return null;
+            return (
+              <>
+                <div className="grid grid-cols-4 gap-2">
+                  <Stat label="PBO" value={num(m.pbo)} />
+                  <Stat label="Blocks" value={String(m.numBlocks)} />
+                  <Stat label="Paths" value={String(m.numPaths)} />
+                  <Stat label="P(OOS loss)" value={pct(m.probLossOOS, 0)} />
+                </div>
+                {c.reason && <p className="text-xs text-text-secondary">{c.reason}</p>}
+              </>
+            );
+          })()}
         </Section>
 
         {/* ── Position sizing ── */}
