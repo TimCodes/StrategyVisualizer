@@ -303,10 +303,50 @@ Common commands:
 
 ```bash
 npm run dev        # start API + client (loads .env)
-npm test           # vitest (184 tests)
+npm test           # vitest (229 tests)
 npm run check      # tsc type-check
 npm run db:push    # apply schema to Postgres
+npm run db:backup  # pg_dump the local Postgres → backups/
+npm run db:restore -- backups/<file>.sql   # restore a dump (drops current schema!)
 ```
+
+---
+
+## Operations
+
+### Backups — the trial ledger is the crown jewel
+
+Market data is re-downloadable and LEAN results are re-runnable, but the **trial ledger and gate history are not** — they are what keeps every DSR/PBO claim honest. Back them up.
+
+```bash
+npm run db:backup                              # manual dump → backups/praxis-<stamp>.sql
+curl -X POST localhost:5000/api/system/backup  # same, via the running app
+curl localhost:5000/api/system/backups         # list dumps (newest first)
+```
+
+Set `BACKUP_CRON` in `.env` (e.g. `0 3 * * *` for 3am daily) to run dumps automatically while the app is up. Dumps run `pg_dump` **inside** the `praxis-postgres` container (no local Postgres client needed), are sanity-checked before saving, and are pruned to the newest `BACKUP_KEEP` (default 30). `backups/` is gitignored — copy the newest dump somewhere off-machine periodically.
+
+Restore (drops and recreates the schema first, 5-second abort window):
+
+```bash
+npm run db:restore -- backups/praxis-2026-07-18-03-00-00.sql
+```
+
+Backups only target a **localhost** `DATABASE_URL`; if you point at a managed Postgres (neon etc.), use the provider's backup tooling instead — the app will tell you so.
+
+### Scheduled jobs (all optional, all via `.env` cron expressions)
+
+| Variable | What it runs | Suggested |
+|---|---|---|
+| `BACKUP_CRON` | `pg_dump` of the ledger + gate history | `0 3 * * *` |
+| `DATA_REFRESH_CRON` | Data pipeline refresh (so incubation sees new bars) | `0 22 * * 1-5` |
+| `INCUBATION_CRON` | Ghost runs: re-run incubating strategies on fresh data, log paper observations | `0 2 * * *` |
+
+These run in-process — they fire only while `npm run dev`/`start` is up. If the app isn't running 24/7, drive the same actions from Windows Task Scheduler / cron via the API (`POST /api/incubation/ghost-run`, `POST /api/system/backup`).
+
+### Hosting
+
+**Praxis is local-first, and that is the deployment story.** The entire value of the pipeline is the real LEAN engine, and LEAN runs in Docker on your machine — a Docker-less PaaS (the retired Replit path) can only ever run the `"simulated"` engine, where **no gate can validate anything**. The supported setup is this repo + Docker Desktop + local Postgres, with `AUTH_ENABLED=true` if the machine is shared. If you later want the dashboard reachable remotely, put the local app behind a VPN/tunnel (e.g. Tailscale) rather than re-hosting it away from the engine and data.
 
 ---
 

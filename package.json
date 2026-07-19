@@ -13,7 +13,9 @@
     "check": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "db:backup": "tsx --env-file-if-exists=.env packages/server/scripts/db-backup.ts backup",
+    "db:restore": "tsx --env-file-if-exists=.env packages/server/scripts/db-backup.ts restore"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",
@@ -88,7 +90,6 @@
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
-    "@replit/vite-plugin-cartographer": "^0.2.8",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "^4.1.3",

@@ -10,8 +10,9 @@ the `lean` CLI yourself, you build one Docker image and point the server's
 `LEAN_COMMAND backtest <projectName>` with `cwd = LEAN_WORKSPACE_DIR` and
 reads results from `<workspace>/<project>/backtests/<id>/`.
 
-> LEAN never runs on Replit. `LEAN_ENABLED` stays `false`/unset there; all of
-> this is for a local machine with Docker Desktop.
+> LEAN requires Docker, so Praxis is local-first (the old Replit hosting path
+> is retired — see the README's Operations section). All of this is for a
+> local machine with Docker Desktop.
 
 ---
 

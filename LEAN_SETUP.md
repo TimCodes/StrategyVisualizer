@@ -1,15 +1,14 @@
 # LEAN Local Setup
 
-> **This file documents steps to be completed LOCALLY, not in Replit.**
-> Everything below requires Docker and the `lean` CLI installed on your local
-> machine. **Do not perform these steps in Replit** — LEAN and Docker are not
-> available there and are not needed for the app to run in simulation mode.
+> Everything below requires Docker on your local machine. Praxis is
+> local-first — the old Replit hosting path is retired (LEAN cannot run on a
+> Docker-less PaaS, and without LEAN no gate can validate anything). See the
+> README's Operations section.
 
-## What already works in Replit (no action needed)
+## Without LEAN (any Docker-less environment)
 
 - Backtests run via the built-in simulator (`dataSource: "simulated"`).
 - The gate pipeline shows `cannot_evaluate` (correct — gates only pass on `live_engine` data).
-- The app builds and runs with zero errors.
 - `LEAN_ENABLED` is unset/`false`, so `runLeanBacktest()` is never called.
 
 ---
@@ -84,7 +83,7 @@ LEAN_WORKSPACE_DIR=./lean-workspace
 LEAN_BACKTEST_TIMEOUT_MS=600000
 ```
 
-**Never set `LEAN_ENABLED=true` in Replit or any deployed environment.**
+**Never set `LEAN_ENABLED=true` in an environment without the Docker engine and workspace.**
 
 ### 6. Run one real backtest
 
@@ -126,7 +125,7 @@ full guard logic before doing so.
 
 ## Guard summary
 
-| Variable | Replit value | Local (after setup) |
+| Variable | Without Docker/LEAN | Local (after setup) |
 |---|---|---|
 | `LEAN_ENABLED` | `false` / unset | `true` |
 | `LIVE_TRADING_ENABLED` | `false` / unset | `true` (after verification) |

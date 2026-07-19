@@ -3,6 +3,7 @@ import path from "path";
 import cron from "node-cron";
 import { runAllIncubationGhostRuns } from "../services/incubation-runner";
 import { isLeanAvailable } from "../services/lean-runner";
+import { runBackup } from "../services/backup";
 
 // ─────────────────────────────────────────────────────────────
 //  Optional in-process scheduler (Phase 12).
@@ -35,7 +36,31 @@ function scheduleDataRefresh(): void {
   console.log(`[scheduler] data refresh scheduled: "${expr}"`);
 }
 
+// Nightly pg_dump (Phase 15). The trial ledger and gate history are the
+// crown jewels; back them up before anything else gets scheduled.
+function scheduleBackups(): void {
+  const expr = process.env.BACKUP_CRON;
+  if (!expr) return;
+  if (!cron.validate(expr)) {
+    console.error(`[scheduler] BACKUP_CRON invalid: "${expr}" — backups off.`);
+    return;
+  }
+  cron.schedule(expr, async () => {
+    const r = await runBackup();
+    if (r.ok) {
+      console.log(
+        `[scheduler] backup ${r.file} (${r.bytes} bytes)` +
+        (r.pruned?.length ? `; pruned ${r.pruned.length} old dump(s)` : "")
+      );
+    } else {
+      console.error(`[scheduler] backup FAILED: ${r.error}`);
+    }
+  });
+  console.log(`[scheduler] backups scheduled: "${expr}"`);
+}
+
 export function startScheduler(): void {
+  scheduleBackups();
   scheduleDataRefresh();
 
   const expr = process.env.INCUBATION_CRON;

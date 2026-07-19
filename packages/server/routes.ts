@@ -20,6 +20,7 @@ import { isLeanAvailable } from "./services/lean-runner";
 import { isAuthEnabled } from "./lib/auth";
 import { storage } from "./storage";
 import { getDataFreshness } from "./services/data-freshness";
+import { runBackup, listBackups } from "./services/backup";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   registerStrategyRoutes(app);
@@ -43,7 +44,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       backtestEngine: isLeanAvailable() ? "lean" : "simulated",
       authEnabled: isAuthEnabled(),
       data: await getDataFreshness().catch(() => null),
+      lastBackup: await listBackups().then((b) => b[0] ?? null).catch(() => null),
     });
+  });
+
+  // ── Postgres backups (Phase 15) ──
+  app.get("/api/system/backups", async (_req: Request, res: Response) => {
+    try {
+      res.json(await listBackups());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/system/backup", async (_req: Request, res: Response) => {
+    try {
+      const result = await runBackup();
+      res.status(result.ok ? 200 : 500).json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Order audit trail — every broker order attempt (blocked/submitted/error)

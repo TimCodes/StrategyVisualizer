@@ -71,7 +71,7 @@ app.use((req, res, next) => {
   server.listen({
     port,
     host: "0.0.0.0",
-    // reusePort is not supported on Windows (ENOTSUP); keep it for Linux/Replit
+    // reusePort is not supported on Windows (ENOTSUP); keep it for Linux
     ...(process.platform !== "win32" ? { reusePort: true } : {}),
   }, () => {
     log(`serving on port ${port}`);

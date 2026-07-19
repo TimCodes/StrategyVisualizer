@@ -25,7 +25,7 @@ async function initializeDb(): Promise<DrizzleDB | null> {
   try {
     const url = process.env.DATABASE_URL;
     if (/neon\.tech/.test(url)) {
-      // Neon serverless (Replit / cloud): WebSocket-based driver
+      // Neon serverless (cloud Postgres): WebSocket-based driver
       const { Pool } = await import("@neondatabase/serverless");
       const { drizzle } = await import("drizzle-orm/neon-serverless");
       db = drizzle(new Pool({ connectionString: url }), { schema }) as unknown as DrizzleDB;
