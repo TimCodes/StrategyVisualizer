@@ -1,6 +1,26 @@
 # Batch-3 day plan — regime-filtered calendars vs a disclosed bar
 
-**Date:** 2026-08-17 · **Status:** plan (pre-registration to be locked before any run)
+**Date:** 2026-08-17 · **Status:** SUPERSEDED by `PREREGISTRATION.md` (still before any engine run)
+
+> **Superseded.** Working through the actual batch-1/2 numbers while drafting
+> the pre-registration changed the design, and the changes were made *before*
+> any batch-3 run, so nothing here was revised in light of new results:
+>
+> - The `max(0.20, 0.75 × √exposure × B&H)` ret/DD formula sketched below was
+>   **dropped**. It lowered the bar to ~0.20 for turn-of-month, which sits one
+>   hundredth above 045b's known 0.214 — a bar that convenient is indefensible
+>   no matter how it was derived. Replaced by the drawdown-matched passive
+>   alternative test, which is *stricter* for these candidates.
+> - This plan proposed relaxing the calendar drawdown cap from 15% to 20%.
+>   That was **rejected** as goal-shopping in the permissive direction: it
+>   would have readmitted 047b (19.4% DD) on a bar it had already failed. The
+>   15% cap is frozen and 047b stays eliminated.
+> - The 4-candidate slate shrank to **one live candidate (045b)**, because
+>   every other calendar candidate fails a frozen bar. A bar-validation stage
+>   across all 16 prior candidates replaces the "non-calendar control".
+>
+> Read `PREREGISTRATION.md` for the binding design. The rest of this file is
+> kept as the audit trail of what was proposed and why it was changed.
 
 The factory is fully built (v1 phases 0–8, v2 phases 9–15 all complete). Today
 is a research day: chase the one thread both prior campaigns pointed at.
