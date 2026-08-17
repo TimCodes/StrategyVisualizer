@@ -1,0 +1,127 @@
+{
+ "campaign": "cpcv-073-even",
+ "runAt": "2026-08-17",
+ "subject": {
+  "doc": "073",
+  "name": "Faber GTAA",
+  "project": "C1Gtaa",
+  "strategyId": "8cd6c05c-d63f-40b4-9178-65d54d1ed4d3"
+ },
+ "type": "confirmatory re-analysis (offline recomputation, NOT a persisted gate result)",
+ "verdict": "FAIL",
+ "result": {
+  "evenGrid": {
+   "configs": 6,
+   "grid": "sma_days in {120,150,180,210,240,270}",
+   "pbo": 0.7273,
+   "medianLogit": -0.9163,
+   "numSplits": 44,
+   "numPaths": 35
+  },
+  "priorOddGridCorrected": {
+   "configs": 5,
+   "pbo": 0.7273,
+   "medianLogit": -0.6931
+  },
+  "identical": true,
+  "nullBaselineAfterFix": 0.5
+ },
+ "config": {
+  "window": [
+   "2007-01-03",
+   "2025-12-31"
+  ],
+  "years": 18.992,
+  "numBlocks": 8,
+  "embargo": 1,
+  "passCriterion": "PBO < 0.50"
+ },
+ "perConfig": [
+  {
+   "sma_days": 120,
+   "netProfitPct": 134.248,
+   "maxDrawdownPct": 11.0,
+   "totalOrders": 654,
+   "annualizedReturnPct": 4.5838,
+   "retDDRatio": 0.4167,
+   "clearsRotationBar_0_40": true,
+   "addedInThisRun": true
+  },
+  {
+   "sma_days": 150,
+   "netProfitPct": 142.006,
+   "maxDrawdownPct": 11.5,
+   "totalOrders": 650,
+   "annualizedReturnPct": 4.7634,
+   "retDDRatio": 0.4142,
+   "clearsRotationBar_0_40": true,
+   "addedInThisRun": false
+  },
+  {
+   "sma_days": 180,
+   "netProfitPct": 149.336,
+   "maxDrawdownPct": 13.5,
+   "totalOrders": 619,
+   "annualizedReturnPct": 4.9281,
+   "retDDRatio": 0.365,
+   "clearsRotationBar_0_40": false,
+   "addedInThisRun": false
+  },
+  {
+   "sma_days": 210,
+   "netProfitPct": 137.088,
+   "maxDrawdownPct": 13.1,
+   "totalOrders": 627,
+   "annualizedReturnPct": 4.6502,
+   "retDDRatio": 0.355,
+   "clearsRotationBar_0_40": false,
+   "addedInThisRun": false
+  },
+  {
+   "sma_days": 240,
+   "netProfitPct": 131.119,
+   "maxDrawdownPct": 12.5,
+   "totalOrders": 611,
+   "annualizedReturnPct": 4.5098,
+   "retDDRatio": 0.3608,
+   "clearsRotationBar_0_40": false,
+   "addedInThisRun": false
+  },
+  {
+   "sma_days": 270,
+   "netProfitPct": 101.646,
+   "maxDrawdownPct": 16.8,
+   "totalOrders": 594,
+   "annualizedReturnPct": 3.7618,
+   "retDDRatio": 0.2239,
+   "clearsRotationBar_0_40": false,
+   "addedInThisRun": false
+  }
+ ],
+ "keyFinding": "Two of six configs (120 at 0.417, 150 at 0.414) clear the 0.40 rotation bar 073 failed at 210, and the config added by this run scores highest of all - yet PBO is unchanged at 0.7273. The strategy has configurations that look like winners; choosing among them on backtest evidence does not work.",
+ "designChoiceHonoured": "Pre-registered adding 120 rather than 300 to avoid mechanically depressing PBO with another poor long-lookback config. 120 proved the BEST config by ret/DD, so the addition made the test harder, not easier, and PBO did not move.",
+ "mechanism": {
+  "gateRouteUsable": false,
+  "reason": "073 walk-forward config locked at 5 configs (lock-once)",
+  "newRunVia": "separate project C1Gtaa_sma120 (identical code, default 120); C1Gtaa not mutated",
+  "pboComputed": "offline via computeCpcv over 6 stored equity curves",
+  "persistedGateResultOfRecord": "remains the M=5 run"
+ },
+ "limits": [
+  "gate ranks on block total return, not risk-adjusted return (DD span here 11.0-16.8%)",
+  "073 remains a FAIL on locked goals; not reopened"
+ ],
+ "expectationCheck": {
+  "preRegistered": "80% PBO>=0.50",
+  "outcome": "correct"
+ },
+ "trials": {
+  "baseline": 23,
+  "spent": 1,
+  "after": 24
+ },
+ "survivorsToDate": {
+  "candidates": 16,
+  "survivors": 0
+ }
+}
