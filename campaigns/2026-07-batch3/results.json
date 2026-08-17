@@ -1,0 +1,397 @@
+{
+ "campaign": "batch-3",
+ "runAt": "2026-08-17",
+ "outcome": "INCONCLUSIVE",
+ "reason": "Pre-registered \u00a75 red line tripped: 8 of 16 prior candidates pass the proposed test at the primary cash=0% assumption (limit was 4). Test rejected; 045b reverts to batch-2 FAIL.",
+ "trials": {
+  "baseline": 20,
+  "spent": 1,
+  "after": 21
+ },
+ "benchmark": {
+  "project": "B3Benchmark",
+  "window": [
+   "2000-01-03",
+   "2025-12-31"
+  ],
+  "dataSource": "live_engine",
+  "totalReturnPct": 645.714,
+  "maxDrawdownPct": 54.5,
+  "annualizedReturnPct": 8.0356,
+  "sharpeRatio": 0.366,
+  "retDDRatio": 0.1474422018348624,
+  "years": 25.995
+ },
+ "test": {
+  "formula": "PASS iff R_s > 1.25 * (D_s/D_bh * R_bh + (1-D_s/D_bh) * cash)",
+  "primaryCashYieldPct": 0.0,
+  "margin": 1.25,
+  "rejected": true
+ },
+ "barValidation": {
+  "passAtCash0": 8,
+  "total": 16,
+  "redLine": 4,
+  "tripped": true,
+  "passAtCash2": 3,
+  "passAtCash4": 0
+ },
+ "candidates": {
+  "045b": {
+   "verdict": "FAIL (reverted)",
+   "note": "Passed \u00a73 at cash=0% but the test was rejected by \u00a75; batch-2 FAIL stands (ret/DD 0.214)."
+  },
+  "047b": {
+   "verdict": "ELIMINATED",
+   "note": "19.4% DD fails the frozen 15% calendar cap; eliminated before any run."
+  }
+ },
+ "gatesReached": {
+  "walkForward": false,
+  "cpcv": false,
+  "monteCarlo": false,
+  "stageF_046": false
+ },
+ "priorCandidateRescoring": [
+  {
+   "doc": "023",
+   "batch": "2026-07-batch1",
+   "name": "C1 RSI(2) Pullback",
+   "annualizedReturnPct": 2.828101298090524,
+   "maxDrawdownPct": 10.7,
+   "retDDRatio": 0.2643085325318247,
+   "w": 0.19633027522935778,
+   "cash0": {
+    "hurdlePct": 1.9720394495412843,
+    "pass": true
+   },
+   "cash2": {
+    "hurdlePct": 3.98121376146789,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 5.990388073394496,
+    "pass": false
+   }
+  },
+  {
+   "doc": "025",
+   "batch": "2026-07-batch1",
+   "name": "C1 Double 7s (re-reg)",
+   "annualizedReturnPct": 4.940629986807421,
+   "maxDrawdownPct": 16.6,
+   "retDDRatio": 0.29762831245827837,
+   "w": 0.30458715596330277,
+   "cash0": {
+    "hurdlePct": 3.0594256880733948,
+    "pass": true
+   },
+   "cash2": {
+    "hurdlePct": 4.797957798165138,
+    "pass": true
+   },
+   "cash4": {
+    "hurdlePct": 6.536489908256882,
+    "pass": false
+   }
+  },
+  {
+   "doc": "026",
+   "batch": "2026-07-batch1",
+   "name": "C1 Three Lower Closes",
+   "annualizedReturnPct": 2.8502279693153776,
+   "maxDrawdownPct": 14.0,
+   "retDDRatio": 0.20358771209395554,
+   "w": 0.25688073394495414,
+   "cash0": {
+    "hurdlePct": 2.5802385321100916,
+    "pass": true
+   },
+   "cash2": {
+    "hurdlePct": 4.438036697247706,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 6.2958348623853215,
+    "pass": false
+   }
+  },
+  {
+   "doc": "027",
+   "batch": "2026-07-batch1",
+   "name": "C1 IBS Reversion",
+   "annualizedReturnPct": 3.728628004089285,
+   "maxDrawdownPct": 13.4,
+   "retDDRatio": 0.2782558212006929,
+   "w": 0.24587155963302754,
+   "cash0": {
+    "hurdlePct": 2.4696568807339454,
+    "pass": true
+   },
+   "cash2": {
+    "hurdlePct": 4.354977981651377,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 6.240299082568807,
+    "pass": false
+   }
+  },
+  {
+   "doc": "030",
+   "batch": "2026-07-batch1",
+   "name": "C1 VIX-Spike Reversion",
+   "annualizedReturnPct": 1.75875039603961,
+   "maxDrawdownPct": 17.9,
+   "retDDRatio": 0.09825421206925196,
+   "w": 0.328440366972477,
+   "cash0": {
+    "hurdlePct": 3.2990192660550455,
+    "pass": false
+   },
+   "cash2": {
+    "hurdlePct": 4.977918348623853,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 6.6568174311926605,
+    "pass": false
+   }
+  },
+  {
+   "doc": "045",
+   "batch": "2026-07-batch1",
+   "name": "C1 Turn-of-Month",
+   "annualizedReturnPct": 3.8356420291760562,
+   "maxDrawdownPct": 31.1,
+   "retDDRatio": 0.1233325411310629,
+   "w": 0.5706422018348624,
+   "cash0": {
+    "hurdlePct": 5.731815596330275,
+    "pass": false
+   },
+   "cash2": {
+    "hurdlePct": 6.805210091743119,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 7.878604587155964,
+    "pass": false
+   }
+  },
+  {
+   "doc": "047",
+   "batch": "2026-07-batch1",
+   "name": "C1 Halloween Effect",
+   "annualizedReturnPct": 5.0437318873316705,
+   "maxDrawdownPct": 35.1,
+   "retDDRatio": 0.14369606516614444,
+   "w": 0.6440366972477064,
+   "cash0": {
+    "hurdlePct": 6.469026605504587,
+    "pass": false
+   },
+   "cash2": {
+    "hurdlePct": 7.358934862385321,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 8.248843119266056,
+    "pass": false
+   }
+  },
+  {
+   "doc": "058",
+   "batch": "2026-07-batch1",
+   "name": "C1 Stock/Bond Ratio Rotation",
+   "annualizedReturnPct": 7.35485505019684,
+   "maxDrawdownPct": 28.4,
+   "retDDRatio": 0.2589737693731282,
+   "w": 0.5211009174311927,
+   "cash0": {
+    "hurdlePct": 5.234198165137616,
+    "pass": true
+   },
+   "cash2": {
+    "hurdlePct": 6.431445871559633,
+    "pass": true
+   },
+   "cash4": {
+    "hurdlePct": 7.628693577981652,
+    "pass": false
+   }
+  },
+  {
+   "doc": "073",
+   "batch": "2026-07-batch1",
+   "name": "C1 GTAA (re-reg)",
+   "annualizedReturnPct": 4.65,
+   "maxDrawdownPct": 13.1,
+   "retDDRatio": 0.355,
+   "w": 0.2403669724770642,
+   "cash0": {
+    "hurdlePct": 2.4143660550458717,
+    "pass": true
+   },
+   "cash2": {
+    "hurdlePct": 4.313448623853211,
+    "pass": true
+   },
+   "cash4": {
+    "hurdlePct": 6.212531192660551,
+    "pass": false
+   }
+  },
+  {
+   "doc": "091",
+   "batch": "2026-07-batch1",
+   "name": "C1 Stress Divergence (NOVEL)",
+   "annualizedReturnPct": 1.2017535490519426,
+   "maxDrawdownPct": 13.4,
+   "retDDRatio": 0.0896831006755181,
+   "w": 0.24587155963302754,
+   "cash0": {
+    "hurdlePct": 2.4696568807339454,
+    "pass": false
+   },
+   "cash2": {
+    "hurdlePct": 4.354977981651377,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 6.240299082568807,
+    "pass": false
+   }
+  },
+  {
+   "doc": "081",
+   "batch": "2026-07-batch2",
+   "name": "C2 Gap Budget Fade (NOVEL)",
+   "annualizedReturnPct": -0.40892050609057096,
+   "maxDrawdownPct": 21.0,
+   "retDDRatio": -0.01947240505193195,
+   "w": 0.3853211009174312,
+   "cash0": {
+    "hurdlePct": 3.8703577981651383,
+    "pass": false
+   },
+   "cash2": {
+    "hurdlePct": 5.4070550458715605,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 6.943752293577983,
+    "pass": false
+   }
+  },
+  {
+   "doc": "086",
+   "batch": "2026-07-batch2",
+   "name": "C2 Vol-of-Vol Gate (NOVEL)",
+   "annualizedReturnPct": 5.407545783909207,
+   "maxDrawdownPct": 27.3,
+   "retDDRatio": 0.19807860014319437,
+   "w": 0.5009174311926605,
+   "cash0": {
+    "hurdlePct": 5.0314651376146795,
+    "pass": true
+   },
+   "cash2": {
+    "hurdlePct": 6.279171559633028,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 7.526877981651376,
+    "pass": false
+   }
+  },
+  {
+   "doc": "090",
+   "batch": "2026-07-batch2",
+   "name": "C2 Liquidity Vacuum Fade (NOVEL)",
+   "annualizedReturnPct": 0.0,
+   "maxDrawdownPct": 0.0,
+   "retDDRatio": null,
+   "w": 0.0,
+   "cash0": {
+    "hurdlePct": 0.0,
+    "pass": false
+   },
+   "cash2": {
+    "hurdlePct": 2.5,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 5.0,
+    "pass": false
+   }
+  },
+  {
+   "doc": "099",
+   "batch": "2026-07-batch2",
+   "name": "C2 Vol Lifecycle Migration (NOVEL)",
+   "annualizedReturnPct": 0.8400683215310734,
+   "maxDrawdownPct": 8.8,
+   "retDDRatio": 0.0954623092648947,
+   "w": 0.1614678899082569,
+   "cash0": {
+    "hurdlePct": 1.6218642201834865,
+    "pass": false
+   },
+   "cash2": {
+    "hurdlePct": 3.7181944954128445,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 5.814524770642202,
+    "pass": false
+   }
+  },
+  {
+   "doc": "045b",
+   "batch": "2026-07-batch2",
+   "name": "C2 Turn-of-Month + Regime (FIX)",
+   "annualizedReturnPct": 2.9372467662864166,
+   "maxDrawdownPct": 13.7,
+   "retDDRatio": 0.21439757418149027,
+   "w": 0.25137614678899084,
+   "cash0": {
+    "hurdlePct": 2.5249477064220187,
+    "pass": true
+   },
+   "cash2": {
+    "hurdlePct": 4.396507339449542,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 6.268066972477064,
+    "pass": false
+   }
+  },
+  {
+   "doc": "047b",
+   "batch": "2026-07-batch2",
+   "name": "C2 Halloween + Regime (FIX)",
+   "annualizedReturnPct": 3.4551875414482236,
+   "maxDrawdownPct": 19.4,
+   "retDDRatio": 0.17810245059011462,
+   "w": 0.35596330275229354,
+   "cash0": {
+    "hurdlePct": 3.5754733944954125,
+    "pass": false
+   },
+   "cash2": {
+    "hurdlePct": 5.185565137614678,
+    "pass": false
+   },
+   "cash4": {
+    "hurdlePct": 6.795656880733945,
+    "pass": false
+   }
+  }
+ ],
+ "survivorsToDate": {
+  "candidates": 16,
+  "survivors": 0
+ }
+}
