@@ -1,0 +1,117 @@
+{
+ "campaign": "cpcv-025",
+ "runAt": "2026-08-17",
+ "subject": {
+  "doc": "025",
+  "name": "Double 7's",
+  "project": "C1Double7",
+  "strategyId": "6ea62a23-5824-4e19-a7ab-4dd0c1086a19"
+ },
+ "type": "confirmatory robustness diagnostic on a FAILED candidate",
+ "headline": "Run exposed a calibration defect in the CPCV gate. As-run PBO 0.5909 (fail) was an artifact of odd-grid bias; tie-corrected PBO 0.3864 (pass) on identical data. Pre-registered 85% expectation of fail was WRONG.",
+ "asRun": {
+  "pbo": 0.5909,
+  "verdict": "fail",
+  "medianLogit": 0.0,
+  "numSplits": 44,
+  "numCombos": 3,
+  "numBlocks": 8,
+  "embargo": 1,
+  "probLossOOS": 0.0,
+  "dataSource": "live_engine"
+ },
+ "corrected": {
+  "pbo": 0.3864,
+  "verdict": "pass",
+  "recomputedFrom": "stored equity curves, no new engine runs"
+ },
+ "defect": {
+  "description": "Odd config counts always admit an exact-median rank (omega=0.5, logit=0); logit<=0 counted it as overfit, biasing PBO upward.",
+  "discoveredBy": "null-distribution check: pure noise must centre PBO on 0.5",
+  "nullBefore": {
+   "M3": 0.671,
+   "M4": 0.498,
+   "M5": 0.605,
+   "M6": 0.498,
+   "M7": 0.561
+  },
+  "nullAfter": {
+   "M3": 0.503,
+   "M4": 0.498,
+   "M5": 0.507,
+   "M6": 0.498,
+   "M7": 0.489
+  },
+  "fix": "logit<0 counts 1; logit==0 counts 0.5",
+  "regressionTestAdded": true,
+  "testsPassing": 230
+ },
+ "symmetryCheck": {
+  "073": {
+   "asRun": 0.7727,
+   "corrected": 0.7273,
+   "verdict": "FAIL unchanged"
+  },
+  "025": {
+   "asRun": 0.5909,
+   "corrected": 0.3864,
+   "verdict": "PASS flipped"
+  }
+ },
+ "config": {
+  "grid": "n in {5,7,9} (INHERITED from batch-1 locked config, not chosen)",
+  "window": [
+   "2008-01-01",
+   "2025-12-31"
+  ],
+  "years": 17.999,
+  "passCriterion": "PBO < 0.50"
+ },
+ "perConfig": [
+  {
+   "n": 5,
+   "netProfitPct": 233.729,
+   "maxDrawdownPct": 14.0,
+   "totalOrders": 521,
+   "annualizedReturnPct": 6.9251,
+   "retDDRatio": 0.4946
+  },
+  {
+   "n": 7,
+   "netProfitPct": 173.43,
+   "maxDrawdownPct": 15.5,
+   "totalOrders": 349,
+   "annualizedReturnPct": 5.7477,
+   "retDDRatio": 0.3708
+  },
+  {
+   "n": 9,
+   "netProfitPct": 210.544,
+   "maxDrawdownPct": 29.5,
+   "totalOrders": 274,
+   "annualizedReturnPct": 6.4982,
+   "retDDRatio": 0.2203
+  }
+ ],
+ "limits": [
+  "Window 2008-2025 differs from batch-1s 2000-2025, so this does NOT validate the 0.298 ret/DD estimate; over 2008-2025 n=7 gives 0.371",
+  "CPCV ranks on block total return, not risk-adjusted return; configs span DD 14.0%-29.5%",
+  "M=3 grid is coarse (ranks 1-3 only), low power"
+ ],
+ "consequences": [
+  "025 remains a FAIL; locked goals never reopened",
+  "Phase-14 acceptance claim (Double7 PBO 0.73) was overstated: 3-config null was 0.671",
+  "the near-miss-equals-parameter-noise policy proposed in the 073 report is WITHDRAWN",
+  "all prior odd-grid CPCV numbers must be read against an inflated null"
+ ],
+ "trials": {
+  "baseline": 22,
+  "procedureTrials": 1,
+  "underlyingEngineRuns": 3,
+  "after": 23
+ },
+ "survivorsToDate": {
+  "candidates": 16,
+  "survivors": 0
+ }
+}

@@ -127,7 +127,13 @@ export function computeCpcv(
     const logit = Math.log(omega / (1 - omega));
     logits.push(logit);
 
-    if (logit <= 0) overfit++;          // IS-best in the bottom OOS half
+    // IS-best in the bottom OOS half. An odd number of configurations always
+    // admits an exact-median rank (omega = 0.5, logit = 0); that is neutral,
+    // not overfit. Counting it as overfit biases PBO upward — measurably so:
+    // on pure noise it pushed M=3 to 0.67 and M=5 to 0.61 against a true 0.50,
+    // while even M was unbiased. Split the tie instead.
+    if (logit < 0) overfit += 1;
+    else if (logit === 0) overfit += 0.5;
     if (oosPerf[best] < 0) lossOOS++;   // IS-best lost money OOS
   }
 

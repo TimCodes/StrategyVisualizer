@@ -104,6 +104,32 @@ describe("computeCpcv", () => {
     expect(tight.numSplits).toBeGreaterThan(0);
   });
 
+  // Calibration: PBO is a probability, so pure noise (no configuration holding
+  // any real edge) must centre on 0.5 for EVERY grid size. It did not before
+  // the tie fix — odd M always admits an exact-median rank (omega = 0.5,
+  // logit = 0), and counting that as overfit pushed M=3 to 0.67 and M=5 to
+  // 0.61. That bias silently failed robust strategies on small odd grids.
+  it("is unbiased on pure noise for both odd and even grid sizes", () => {
+    const mulberry = (seed: number) => () => {
+      seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    for (const M of [3, 4, 5, 6, 7]) {
+      const rnd = mulberry(42 + M);
+      let sum = 0;
+      const runs = 200;
+      for (let i = 0; i < runs; i++) {
+        const matrix = Array.from({ length: M }, () =>
+          Array.from({ length: 8 }, () => rnd() - 0.5)
+        );
+        sum += computeCpcv(matrix, { embargo: 1 }).pbo;
+      }
+      expect(Math.abs(sum / runs - 0.5)).toBeLessThan(0.06);
+    }
+  });
+
   it("reports the number of paths per López de Prado φ = C(N,k)·k/N", () => {
     const matrix = [Array(8).fill(1), Array(8).fill(0.5), Array(8).fill(0.2)];
     const r = computeCpcv(matrix, { embargo: 0 });
