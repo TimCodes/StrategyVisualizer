@@ -1,6 +1,6 @@
 # Batch-3 day plan — regime-filtered calendars vs a disclosed bar
 
-**Date:** 2026-07-22 · **Status:** plan (pre-registration to be locked before any run)
+**Date:** 2026-08-17 · **Status:** plan (pre-registration to be locked before any run)
 
 The factory is fully built (v1 phases 0–8, v2 phases 9–15 all complete). Today
 is a research day: chase the one thread both prior campaigns pointed at.
