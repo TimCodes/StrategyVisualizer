@@ -1,0 +1,112 @@
+{
+ "campaign": "cpcv-073",
+ "runAt": "2026-08-17",
+ "subject": {
+  "doc": "073",
+  "name": "Faber GTAA",
+  "project": "C1Gtaa",
+  "strategyId": "8cd6c05c-d63f-40b4-9178-65d54d1ed4d3"
+ },
+ "type": "robustness diagnostic on a FAILED candidate (does not reopen locked goals)",
+ "verdict": "FAIL",
+ "gate": "cpcv",
+ "metrics": {
+  "pbo": 0.7727,
+  "numSplits": 44,
+  "numPaths": 35,
+  "numCombos": 5,
+  "numBlocks": 8,
+  "embargo": 1,
+  "medianLogit": -0.6931,
+  "probLossOOS": 0.0,
+  "dataSource": "live_engine"
+ },
+ "config": {
+  "grid": "sma_days in {150,180,210,240,270}",
+  "window": [
+   "2007-01-03",
+   "2025-12-31"
+  ],
+  "years": 18.992,
+  "passCriterion": "PBO < 0.50"
+ },
+ "validityCheck": {
+  "required": "sma_days=210 reproduces batch-1 within 0.5pp total return",
+  "batch1": {
+   "totalReturnPct": 136.97,
+   "maxDrawdownPct": 13.1,
+   "retDDRatio": 0.355
+  },
+  "observed": {
+   "totalReturnPct": 137.088,
+   "maxDrawdownPct": 13.1,
+   "retDDRatio": 0.355
+  },
+  "deltaPP": 0.118,
+  "passed": true,
+  "note": "0.118pp delta attributed to the 2026-08-17 data refresh rewriting dividend factor files"
+ },
+ "perConfig": [
+  {
+   "sma_days": 150,
+   "netProfitPct": 142.006,
+   "maxDrawdownPct": 11.5,
+   "totalOrders": 650,
+   "annualizedReturnPct": 4.7634,
+   "retDDRatio": 0.4142,
+   "clearsRotationBar_0_40": true
+  },
+  {
+   "sma_days": 180,
+   "netProfitPct": 149.336,
+   "maxDrawdownPct": 13.5,
+   "totalOrders": 619,
+   "annualizedReturnPct": 4.9281,
+   "retDDRatio": 0.365,
+   "clearsRotationBar_0_40": false
+  },
+  {
+   "sma_days": 210,
+   "netProfitPct": 137.088,
+   "maxDrawdownPct": 13.1,
+   "totalOrders": 627,
+   "annualizedReturnPct": 4.6502,
+   "retDDRatio": 0.355,
+   "clearsRotationBar_0_40": false
+  },
+  {
+   "sma_days": 240,
+   "netProfitPct": 131.119,
+   "maxDrawdownPct": 12.5,
+   "totalOrders": 611,
+   "annualizedReturnPct": 4.5098,
+   "retDDRatio": 0.3608,
+   "clearsRotationBar_0_40": false
+  },
+  {
+   "sma_days": 270,
+   "netProfitPct": 101.646,
+   "maxDrawdownPct": 16.8,
+   "totalOrders": 594,
+   "annualizedReturnPct": 3.7618,
+   "retDDRatio": 0.2239,
+   "clearsRotationBar_0_40": false
+  }
+ ],
+ "keyFinding": "sma_days=150 clears the 0.40 rotation bar (ret/DD 0.414) that 073 failed at 210. Sweeping and reporting the best would have manufactured a false survivor; PBO 0.77 says that selection lands below the OOS median 77% of the time. Spread 0.224-0.414 dwarfs the 0.045 miss.",
+ "trials": {
+  "baseline": 21,
+  "procedureTrials": 1,
+  "underlyingEngineRuns": 5,
+  "after": 22
+ },
+ "consequences": [
+  "073 closed",
+  "batch-3 recommendation to revisit the GTAA archetype WITHDRAWN",
+  "pre-registered expectation (PBO<0.50 at ~65%) was WRONG"
+ ],
+ "survivorsToDate": {
+  "candidates": 16,
+  "survivors": 0
+ }
+}
