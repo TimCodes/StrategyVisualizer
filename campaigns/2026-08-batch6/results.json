@@ -1,0 +1,110 @@
+{
+ "campaign": "batch-6-blend-implemented",
+ "runAt": "2026-08-18",
+ "verdict": "FAIL",
+ "failsOn": [
+  "section-3 hurdle by 0.239pp",
+  "FROZEN min annual return 4% (3.925%)"
+ ],
+ "window": [
+  "2008-01-03",
+  "2025-12-31"
+ ],
+ "components": 19,
+ "weighting": "equal 1/19, netted",
+ "validityCheck": {
+  "required": "Run A within +/-0.75pp ann and +/-2.0pp DD of batch-5 arithmetic",
+  "batch5": {
+   "ann": 3.912,
+   "dd": 11.16
+  },
+  "runA": {
+   "ann": 4.0741,
+   "dd": 11.1
+  },
+  "deltaAnnPP": 0.1621,
+  "deltaDDPP": -0.06,
+  "passed": true
+ },
+ "runA_frictionless": {
+  "annualizedReturnPct": 4.0741,
+  "maxDrawdownPct": 11.1,
+  "retDDRatio": 0.367,
+  "totalTrades": 4058
+ },
+ "runB_realistic": {
+  "annualizedReturnPct": 3.9252,
+  "maxDrawdownPct": 11.2,
+  "retDDRatio": 0.3505,
+  "totalTrades": 4058,
+  "tradesPerYear": 225.5,
+  "sharpeRatio": 0.443,
+  "hurdlePct": 4.1643,
+  "ddMatchedPassivePct": 3.3314,
+  "beatsPassiveByPct": 17.82,
+  "gapPP": 0.2391
+ },
+ "executionRealityDecomposition": {
+  "nettingGainPP": 0.1621,
+  "frictionCostPP": -0.1489,
+  "netEffectPP": 0.0132,
+  "finding": "Netting HELPED (+0.162pp) and friction COST (-0.149pp); they almost exactly cancelled. Batch-5 predicted costs would widen the gap - wrong in mechanism, right in verdict only by accident."
+ },
+ "gapStability": {
+  "batch5ArithmeticPP": 0.244,
+  "batch6RealPP": 0.2391,
+  "retDDArithmetic": 0.35,
+  "retDDReal": 0.3505,
+  "finding": "The shortfall is not an artifact of modelling assumptions - it survives full implementation with netting, commissions and slippage."
+ },
+ "frozenCaps": {
+  "maxDrawdown20": {
+   "value": 11.2,
+   "pass": true
+  },
+  "minAnnual4": {
+   "value": 3.9252,
+   "pass": false
+  },
+  "minTradesPerYear8": {
+   "value": 225.5,
+   "pass": true
+  }
+ },
+ "gatesRun": {
+  "feasibility": "FAIL",
+  "walkForward": "N/A - zero free parameters",
+  "cpcv": "N/A - no parameter selected",
+  "monteCarlo": "not run - feasibility failed"
+ },
+ "keyConclusion": "No reformulation of the disputed drawdown-matched hurdle can rescue this: the blend fails the FROZEN 4% minimum annual return, locked since batch 2 and independent of that test. Rescuing it would require lowering a frozen bar.",
+ "expectationCheck": {
+  "runBFailsHurdle": {
+   "pred": "~75%",
+   "outcome": "right, wrong reason"
+  },
+  "nettingMoves0.5pp": {
+   "pred": "~50%",
+   "outcome": "WRONG (+0.162pp)"
+  },
+  "runAValid": {
+   "pred": "~70%",
+   "outcome": "right"
+  },
+  "inheritedBatch5CostsWidenGap": {
+   "outcome": "WRONG - costs were neutral"
+  }
+ },
+ "trials": {
+  "baseline": 31,
+  "runA": 1,
+  "runB": 1,
+  "after": 33
+ },
+ "standing": {
+  "candidates": 20,
+  "portfolios": 2,
+  "survivors": 0
+ },
+ "recommendation": "Stop searching this space - daily bars on liquid ETFs, long-only/dollar-neutral, cannot produce 4%/yr at low drawdown from this library across 6 campaigns and 33 trials. If research continues, change the DATA (intraday, single stocks with survivorship handling, options), not the bar. Do not lower the 4% floor and do not re-cut the hurdle."
+}
