@@ -142,23 +142,108 @@ describe("computeCpcv", () => {
 
 describe("cpcvVerdict", () => {
   const base = {
+    metric: "sharpe" as const, pboBySharpe: 0.4, pboByTotalReturn: 0.4,
     numBlocks: 8, numCombos: 3, numSplits: 70, numPaths: 35,
     medianLogit: 0, probLossOOS: 0.2, embargo: 1,
   };
 
   it("fails at PBO >= 0.5", () => {
-    const v = cpcvVerdict({ ...base, pbo: 0.6 });
+    const v = cpcvVerdict({ ...base, pbo: 0.6, pboBySharpe: 0.6, pboByTotalReturn: 0.6 });
     expect(v.verdict).toBe("fail");
     expect(v.reason).toMatch(/overfit/);
   });
 
   it("passes below 0.5, flags strong below 0.2", () => {
-    expect(cpcvVerdict({ ...base, pbo: 0.4 }).verdict).toBe("pass");
-    expect(cpcvVerdict({ ...base, pbo: 0.1 }).reason).toMatch(/strong/);
+    expect(cpcvVerdict({ ...base, pbo: 0.4, pboBySharpe: 0.4, pboByTotalReturn: 0.4 }).verdict).toBe("pass");
+    expect(cpcvVerdict({ ...base, pbo: 0.1, pboBySharpe: 0.1, pboByTotalReturn: 0.1 }).reason).toMatch(/strong/);
   });
 
   it("the boundary is exactly CPCV_PBO_FAIL", () => {
-    expect(cpcvVerdict({ ...base, pbo: CPCV_PBO_FAIL }).verdict).toBe("fail");
-    expect(cpcvVerdict({ ...base, pbo: CPCV_PBO_FAIL - 0.001 }).verdict).toBe("pass");
+    expect(cpcvVerdict({ ...base, pbo: CPCV_PBO_FAIL, pboBySharpe: CPCV_PBO_FAIL, pboByTotalReturn: CPCV_PBO_FAIL }).verdict).toBe("fail");
+    expect(cpcvVerdict({ ...base, pbo: CPCV_PBO_FAIL - 0.001, pboBySharpe: CPCV_PBO_FAIL - 0.001, pboByTotalReturn: CPCV_PBO_FAIL - 0.001 }).verdict).toBe("pass");
+  });
+});
+
+// ─── ranking metric (risk-adjusted vs raw return) ────────────
+
+describe("computeCpcv ranking metric", () => {
+  function mulberry(seed: number) {
+    return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+  // Three configs with daily returns underneath each block. "swingy" earns the
+  // most but pays for it in volatility; "steady" is the one a ret/DD-driven
+  // researcher would actually pick. This is the 025 scenario in miniature.
+  function build(seed = 7) {
+    const rnd = mulberry(seed);
+    const profiles = [
+      { mean: 0.075, vol: 0.06 },   // swingy
+      { mean: 0.040, vol: 0.004 },  // steady
+      { mean: 0.010, vol: 0.005 },  // weak
+    ];
+    const daily = profiles.map((p) =>
+      Array.from({ length: 8 }, () =>
+        Array.from({ length: 60 }, () => p.mean / 60 + p.vol * (rnd() - 0.5))));
+    const matrix = daily.map((blocks) => blocks.map((b) => b.reduce((s, x) => s + x, 0)));
+    return { matrix, daily };
+  }
+
+  it("always reports both rankings, with sharpe primary by default", () => {
+    const { matrix, daily } = build();
+    const r = computeCpcv(matrix, { embargo: 1, blockDailyReturns: daily });
+    expect(r.metric).toBe("sharpe");
+    expect(r.pbo).toBe(r.pboBySharpe);
+    expect(Number.isFinite(r.pboByTotalReturn)).toBe(true);
+  });
+
+  it("honours the metric option for the headline pbo", () => {
+    const { matrix, daily } = build();
+    const r = computeCpcv(matrix, { embargo: 1, blockDailyReturns: daily, metric: "total_return" });
+    expect(r.metric).toBe("total_return");
+    expect(r.pbo).toBe(r.pboByTotalReturn);
+  });
+
+  it("raw-return ranking is fooled by the volatile config; risk-adjusted is not", () => {
+    const { matrix, daily } = build();
+    const r = computeCpcv(matrix, { embargo: 1, blockDailyReturns: daily });
+    expect(r.pboBySharpe).toBeLessThan(r.pboByTotalReturn);
+  });
+
+  // Sharpe over 3-4 block aggregates is a hopeless estimate; over pooled daily
+  // returns it has hundreds of observations. The pooled version should be the
+  // more stable of the two on identical data.
+  it("pooled daily returns give a steadier estimate than block aggregates", () => {
+    const { matrix, daily } = build();
+    const pooled = computeCpcv(matrix, { embargo: 1, blockDailyReturns: daily });
+    const aggregates = computeCpcv(matrix, { embargo: 1 });
+    expect(pooled.pboBySharpe).toBeLessThanOrEqual(aggregates.pboBySharpe);
+  });
+
+  it("falls back to block aggregates when no daily returns are supplied", () => {
+    const { matrix } = build();
+    const r = computeCpcv(matrix, { embargo: 1 });
+    expect(Number.isFinite(r.pboBySharpe)).toBe(true);
+  });
+
+  it("degenerate constant series rank by mean rather than producing NaN", () => {
+    const r = computeCpcv([Array(8).fill(0.05), Array(8).fill(0.02)], { embargo: 1 });
+    expect(Number.isFinite(r.pboBySharpe)).toBe(true);
+    expect(r.pboBySharpe).toBeLessThan(0.5);
+  });
+
+  it("verdict flags disagreement between the rankings", () => {
+    const base = {
+      metric: "sharpe" as const, numBlocks: 8, numCombos: 3, numSplits: 44,
+      numPaths: 35, medianLogit: 0, probLossOOS: 0.1, embargo: 1,
+    };
+    const disagreeing = cpcvVerdict({ ...base, pbo: 0.30, pboBySharpe: 0.30, pboByTotalReturn: 0.80 });
+    expect(disagreeing.verdict).toBe("pass");
+    expect(disagreeing.reason).toMatch(/disagrees/);
+    expect(disagreeing.reason).toMatch(/unsettled/);
+
+    const agreeing = cpcvVerdict({ ...base, pbo: 0.30, pboBySharpe: 0.30, pboByTotalReturn: 0.35 });
+    expect(agreeing.reason).not.toMatch(/disagrees/);
   });
 });

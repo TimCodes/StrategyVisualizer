@@ -404,6 +404,8 @@ export default function StrategyDetail() {
             Combinatorial Purged Cross-Validation — stronger than single-split walk-forward.
             Runs each grid combo once, slices into blocks, and evaluates every IS/OOS split.
             PBO &lt; 0.5 means the in-sample-optimal config generalizes; ≥ 0.5 is overfit.
+            Both rankings are reported: risk-adjusted (primary, over pooled daily returns)
+            and raw return. When they disagree, treat the verdict as unsettled.
           </p>
           {!((s.walkForwardConfig?.parameters ?? []).length) && (
             <p className="text-xs text-amber-400">Needs a walk-forward config with a parameter grid (≥ 2 configs).</p>
@@ -415,8 +417,8 @@ export default function StrategyDetail() {
             return (
               <>
                 <div className="grid grid-cols-4 gap-2">
-                  <Stat label="PBO" value={num(m.pbo)} />
-                  <Stat label="Blocks" value={String(m.numBlocks)} />
+                  <Stat label="PBO (risk-adj)" value={num(m.pboBySharpe ?? m.pbo)} />
+                  <Stat label="PBO (raw ret)" value={m.pboByTotalReturn != null ? num(m.pboByTotalReturn) : "—"} />
                   <Stat label="Paths" value={String(m.numPaths)} />
                   <Stat label="P(OOS loss)" value={pct(m.probLossOOS, 0)} />
                 </div>
