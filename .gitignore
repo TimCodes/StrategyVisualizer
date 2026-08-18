@@ -11,3 +11,6 @@ lean-workspace/
 
 # Postgres dumps (Phase 15) — local safety net, never committed
 backups/
+
+# stray server logs
+*.log
