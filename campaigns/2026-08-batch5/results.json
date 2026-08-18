@@ -1,0 +1,115 @@
+{
+ "campaign": "batch-5-portfolio",
+ "runAt": "2026-08-18",
+ "verdict": "FAIL",
+ "shortfallPP": 0.2439,
+ "window": [
+  "2008-01-03",
+  "2025-12-31"
+ ],
+ "components": 19,
+ "excluded": {
+  "090": "zero trades over entire backtest"
+ },
+ "weighting": "equal (1/19), daily rebalanced, zero free parameters",
+ "benchmarks": {
+  "R_bh": 11.0284,
+  "D_bh": 51.7065702000001,
+  "c": 1.2035,
+  "note": "recomputed from stored B4Benchmark/B4Cash curves truncated to the identical grid"
+ },
+ "blend": {
+  "annualizedReturnPct": 3.9117,
+  "maxDrawdownPct": 11.1624,
+  "retDDRatio": 0.3504,
+  "sharpe": 0.7639,
+  "hurdlePct": 4.1556,
+  "ddMatchedPassivePct": 3.3245,
+  "beatsPassiveAlternative": true,
+  "beatsPassiveByPct": 17.66,
+  "premiumRequiredPct": 25,
+  "betaToSPY": 0.1188,
+  "corrToSPY": 0.5368,
+  "betaExplainedReturnPct": 1.3104
+ },
+ "skepticalChecks": {
+  "vs6040": {
+   "ann": 8.1245,
+   "dd": 34.0365,
+   "retdd": 0.2387,
+   "sharpe": 0.6044,
+   "blendBeatsOnRetDD": true,
+   "blendBeatsOnSharpe": true,
+   "note": "pre-registered as the decisive check; blend passed it"
+  },
+  "vsSPY": {
+   "retdd": 0.2133,
+   "sharpe": 0.5308,
+   "blendBeatsBoth": true
+  },
+  "leaveOneOut": {
+   "maxSwingPct": 6.74,
+   "threshold": 15,
+   "robust": true,
+   "largestMover": "081",
+   "note": "dropping worst component 081 IMPROVES to 0.374 - why it stayed in"
+  },
+  "leverageToParity": {
+   "x": 2.819,
+   "impliedDDPct": 31.47,
+   "spyDDPct": 51.7065702000001
+  }
+ },
+ "secondaryWeightings": {
+  "inverseVol": {
+   "ann": 2.82,
+   "dd": 8.1,
+   "retdd": 0.348,
+   "verdict": "FAIL"
+  },
+  "positiveOnly17": {
+   "ann": 4.42,
+   "dd": 11.7,
+   "retdd": 0.377,
+   "verdict": "PASS",
+   "binding": false,
+   "note": "SELECTION-CONTAMINATED, declared non-binding in advance; quantifies that cherry-picking two known losers buys ~+0.5pp and would flip the verdict"
+  }
+ },
+ "testDefectsFound": [
+  "Benchmark fails its own test: SPY needs 1.25 x R_bh by construction, so passive can never clear a 25% premium over itself. The test measures premium-over-lazy-alternative, never \"is this good\".",
+  "NOT LEVERAGE-INVARIANT: scaling by k scales R_s and D_s but not the cash term (1-w)*c, so leverage makes passing easier. At 2.82x the blend matches SPY return with 31.5% DD vs 51.7% and WOULD PASS. Not used to flip this verdict."
+ ],
+ "expectationCheck": {
+  "clearsHurdle": {
+   "pred": "~65% pass",
+   "outcome": "WRONG"
+  },
+  "beats6040": {
+   "pred": "~45%",
+   "outcome": "right, underconfident"
+  },
+  "corrSPYover0.7": {
+   "pred": "~70%",
+   "outcome": "WRONG (0.537)"
+  },
+  "looUnder15pct": {
+   "pred": "~80%",
+   "outcome": "right (6.7%)"
+  },
+  "score": "2 of 4"
+ },
+ "trials": {
+  "baseline": 30,
+  "spent": 1,
+  "blendCost": 0,
+  "after": 31
+ },
+ "standing": {
+  "candidates": 20,
+  "portfolios": 1,
+  "survivors": 0
+ },
+ "headline": "The 19 strategies equally weighted beat both 60/40 and SPY on ret/DD and Sharpe with only 0.119 beta, and still miss a 25%-premium hurdle by 0.244pp. The problem is not the edges and not the diversification - it is the absolute return level (3.91%/yr).",
+ "recommendation": "1) Implement the blend as a real LEAN algorithm and run the true gauntlet (pre-committed follow-up); expect 19x execution costs to widen the gap. 2) Fix leverage non-invariance BEFORE reuse - a ret/DD-ratio comparison is scale-free - but this would be the THIRD version of the test, so it must be declared in advance under the same red line and abandoned entirely if it fails validation. 3) Do NOT lower the bar and do NOT adopt the positive-only subset."
+}
