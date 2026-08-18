@@ -1,0 +1,132 @@
+{
+ "campaign": "batch-4",
+ "runAt": "2026-08-17",
+ "outcome": "0 of 4 pass; no candidate reached Stage 2",
+ "benchmarks": {
+  "window": [
+   "2008-01-01",
+   "2025-12-31"
+  ],
+  "years": 18.0,
+  "spy": {
+   "annualizedReturnPct": 11.0237,
+   "maxDrawdownPct": 51.7,
+   "retDDRatio": 0.2132
+  },
+  "cashBIL": {
+   "annualizedReturnPct": 1.203,
+   "note": "measured, not assumed; 2008-2025 includes the ZIRP decade"
+  }
+ },
+ "test": {
+  "formula": "PASS iff R_s > 1.25 * (w*R_bh + (1-w)*c), w = D_s/D_bh",
+  "margin": 1.25,
+  "cashYieldPct": 1.203,
+  "measured": true
+ },
+ "barValidation": {
+  "passAtMeasuredC": 4,
+  "total": 16,
+  "redLine": 4,
+  "tripped": false,
+  "passers": [
+   "058",
+   "025",
+   "073",
+   "027"
+  ],
+  "passAtZeroCash": 8,
+  "passAtDoubleC": 1,
+  "caveat": "Accepted at the exact limit. 045b/026/023 sit within ~0.8pp of their hurdles; a slightly lower measured cash rate would have tripped the red line and ended the approach."
+ },
+ "candidates": [
+  {
+   "doc": "RiskParity",
+   "project": "B4RiskParity",
+   "label": "071 Risk Parity",
+   "annualizedReturnPct": 6.8267,
+   "maxDrawdownPct": 23.2,
+   "retDDRatio": 0.2943,
+   "hurdlePct": 7.0125,
+   "tradesPerYear": 55.39,
+   "totalReturnPct": 228.285,
+   "sharpeRatio": 0.481,
+   "dataSource": "live_engine",
+   "verdict": "FAIL"
+  },
+  {
+   "doc": "DualMom",
+   "project": "B4DualMom",
+   "label": "015 Dual Momentum",
+   "annualizedReturnPct": 6.812,
+   "maxDrawdownPct": 33.6,
+   "retDDRatio": 0.2027,
+   "hurdlePct": 9.4819,
+   "tradesPerYear": 5.28,
+   "totalReturnPct": 227.473,
+   "sharpeRatio": 0.346,
+   "dataSource": "live_engine",
+   "verdict": "FAIL"
+  },
+  {
+   "doc": "PairSpread",
+   "project": "B4PairSpread",
+   "label": "054 Pair Spread",
+   "annualizedReturnPct": 0.488,
+   "maxDrawdownPct": 11.2,
+   "retDDRatio": 0.0436,
+   "hurdlePct": 4.1632,
+   "tradesPerYear": 52.0,
+   "totalReturnPct": 9.159,
+   "sharpeRatio": -0.184,
+   "dataSource": "live_engine",
+   "verdict": "FAIL"
+  },
+  {
+   "doc": "CryptoWknd",
+   "project": "B4CryptoWknd",
+   "label": "087 Crypto Weekend (long-only)",
+   "annualizedReturnPct": -0.3698,
+   "maxDrawdownPct": 17.7,
+   "retDDRatio": -0.0209,
+   "hurdlePct": 5.7065,
+   "tradesPerYear": 5.78,
+   "totalReturnPct": -6.452,
+   "sharpeRatio": -0.333,
+   "dataSource": "live_engine",
+   "verdict": "FAIL"
+  }
+ ],
+ "keyFinding": "071 Risk Parity beats SPY buy-and-hold risk-adjusted (ret/DD 0.294 vs 0.213) yet still FAILS, missing its hurdle by 0.19pp - and independently breaches the frozen 20% drawdown cap at 23.2%. The hurdle is not \"beat SPY's ratio\" but \"beat a SPY/cash blend at your own drawdown, by 25%\". Both profitable candidates (071, 015, both ~6.8%/yr) fail on drawdown, not return.",
+ "deviations": [
+  "015 substitutes EFA for VEU (not in data set), committed pre-run",
+  "087 is a daily-bar, LONG-ONLY adaptation (Coinbase cash account cannot short) - tested roughly half the mechanism",
+  "071 run in base form with no per-sleeve trend gate, to isolate diversification from timing"
+ ],
+ "gatesReached": {
+  "feasibility": true,
+  "walkForward": false,
+  "cpcv": false,
+  "monteCarlo": false
+ },
+ "trials": {
+  "baseline": 24,
+  "benchmarks": 2,
+  "stage1": 4,
+  "after": 30,
+  "budgetedRange": [
+   30,
+   32
+  ]
+ },
+ "expectationCheck": {
+  "preRegistered": "0 of 4 at ~60%",
+  "outcome": "correct"
+ },
+ "survivorsToDate": {
+  "candidates": 20,
+  "survivors": 0
+ },
+ "searchSpaceObservation": "Across all 20 candidates: annual return ~0-7.4%, max DD 8.8-35.1%, ret/DD -0.02 to 0.355. Nothing has reached 0.40; only 073 passed 0.30. Looks like a property of the search space (daily bars, liquid ETFs, long-only/dollar-neutral) rather than 20 independent failures.",
+ "recommendation": "Batch 5 should test PORTFOLIOS, not strategies, using the existing diversification.ts and 20 recorded live_engine equity curves (the deferred Phase 14 multi-system sizing work). If a diversified blend of thin uncorrelated edges also fails the same hurdle, the honest conclusion is that this data set cannot support the bar and the next move is different data, not more strategies. Do not lower the bar."
+}
